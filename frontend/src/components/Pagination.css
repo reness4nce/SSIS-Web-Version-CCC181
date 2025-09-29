@@ -1,0 +1,104 @@
+/* Pagination Container */
+.pagination-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 30px 0;
+    gap: 20px;
+}
+
+/* Pagination Info */
+.pagination-info {
+    color: #660F09;
+    font-size: 0.9rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pagination-info .current-page {
+    background: linear-gradient(135deg, #660F09, #8A6E29);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* Main Pagination Controls */
+.pagination {
+    display: flex;
+    padding-left: 0;
+    list-style: none;
+    background: white;
+    border-radius: 50px;
+    overflow: hidden;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.1);
+    border: 2px solid rgba(102, 15, 9, 0.1);
+}
+
+.page-item {
+    position: relative;
+}
+
+.page-item .page-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 18px;
+    line-height: 1.25;
+    color: #660F09;
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    min-width: 45px;
+    font-size: 0.9rem;
+}
+
+.page-item .page-link:hover {
+    background: linear-gradient(135deg, #660F09, #8A6E29);
+    color: white;
+    transform: translateY(-2px);
+}
+
+.page-item.active .page-link {
+    background: linear-gradient(135deg, #660F09, #8A6E29);
+    color: white;
+    font-weight: 600;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.page-item.disabled .page-link {
+    color: #AD7A32;
+    pointer-events: none;
+    cursor: auto;
+    background-color: rgba(173, 122, 50, 0.1);
+}
+
+/* Navigation arrows */
+.page-item:first-child .page-link,
+.page-item:last-child .page-link {
+    font-weight: 600;
+    font-size: 0.8rem;
+    padding: 12px 16px;
+}
+
+.page-item:first-child .page-link:hover,
+.page-item:last-child .page-link:hover {
+    background: linear-gradient(135deg, #8A6E29, #AD7A32);
+}
+
+/* Add subtle separators between items */
+.page-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 25%;
+    height: 50%;
+    width: 1px;
+    background: rgba(102, 15, 9, 0.1);
+}

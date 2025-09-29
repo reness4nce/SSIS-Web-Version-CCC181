@@ -1,11 +1,20 @@
 from extensions import db
 
 class Student(db.Model):
-    __tablename__ = 'students'
-    id = db.Column(db.String, primary_key=True)
-    firstname = db.Column(db.String, nullable=False)
-    lastname = db.Column(db.String, nullable=False)
-    course_code = db.Column(db.String, db.ForeignKey('programs.code'), nullable=False)
+    __tablename__ = 'student'
+    id = db.Column(db.String(20), primary_key=True)
+    firstname = db.Column(db.String(50), nullable=False)
+    lastname = db.Column(db.String(50), nullable=False)
+    course = db.Column(db.String(20), db.ForeignKey('program.code'), nullable=False)
     year = db.Column(db.Integer, nullable=False)
-    gender = db.Column(db.String, nullable=False)
-    # ...add other fields if needed...
+    gender = db.Column(db.String(10), nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'firstname': self.firstname,
+            'lastname': self.lastname,
+            'course': self.course,
+            'year': self.year,
+            'gender': self.gender
+        }

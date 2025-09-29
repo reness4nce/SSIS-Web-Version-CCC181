@@ -12,7 +12,7 @@ from models.user import User
 
 # --- Main Application Factory ---
 def create_app(config=None):
-    """Creates and configures the Flask application."""
+    """Creates and a new Flask application."""
     app = Flask(__name__, instance_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance'))
 
     # --- Configuration ---
@@ -58,9 +58,3 @@ def create_app(config=None):
         print("Database initialized.")
 
     return app
-
-# --- Create App instance for running with a WSGI server ---
-app = create_app()
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
