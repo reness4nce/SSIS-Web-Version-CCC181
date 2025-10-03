@@ -82,7 +82,6 @@ function StudentForm({ onSuccess, student }) {
           value={formData.id}
           onChange={handleChange}
           required
-          disabled={isEdit}
         />
         {errorMessage && <div className="text-danger mt-2">{errorMessage}</div>}
       </div>
@@ -107,15 +106,15 @@ function StudentForm({ onSuccess, student }) {
         />
       </div>
       <div className="mb-3">
-        <label>Course</label>
+        <label>Program</label>
         <select
-          name="course"
+          name="program"
           className="form-control"
-          value={formData.course}
+          value={formData.program}
           onChange={handleChange}
           required
         >
-          <option value="">Select a course</option>
+          <option value="">Select a program</option>
           {programs.map((program) => (
             <option key={program.code} value={program.code}>
               {program.name}

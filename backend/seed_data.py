@@ -1,7 +1,6 @@
 import random
 from faker import Faker
 
-# Corrected imports to work with the Flask CLI
 from extensions import db
 from models.college import College
 from models.program import Program
@@ -9,13 +8,119 @@ from models.student import Student
 from models.user import User
 fake = Faker()
 
-# --- Your excellent data lists are preserved here ---
-COLLEGES_DATA = [('CCS', 'College of Computer Studies'), ('COE', 'College of Engineering'), ('CEBA', 'College of Business Administration'), ('CASS', 'College of Arts and Social Sciences'), ('CHS', 'College of Health Sciences'), ('CED', 'College of Education'), ('CSM', 'College of Science and Mathematics'), ('CON', 'College of Nursing'), ('CTE', 'College of Teacher Education'), ('CAF', 'College of Accountancy and Finance'), ('CITHM', 'College of International Tourism and Hospitality Management')]
-PROGRAMS_DATA = [('BSCS', 'Bachelor of Science in Computer Science', 'CCS'), ('BSIT', 'Bachelor of Science in Information Technology', 'CCS'), ('BSIS', 'Bachelor of Science in Information Systems', 'CCS'), ('BSCA', 'Bachelor of Science in Computer Applications', 'CCS'), ('BSCE', 'Bachelor of Science in Civil Engineering', 'COE'), ('BSEE', 'Bachelor of Science in Electrical Engineering', 'COE'), ('BSME', 'Bachelor of Science in Mechanical Engineering', 'COE'), ('BSIE', 'Bachelor of Science in Industrial Engineering', 'COE'), ('BSECE', 'Bachelor of Science in Electronics and Communications Engineering', 'COE'), ('BSBA-MM', 'Bachelor of Science in Business Administration Major in Marketing Management', 'CEBA'), ('BSBA-FM', 'Bachelor of Science in Business Administration Major in Financial Management', 'CEBA'), ('BSBA-HM', 'Bachelor of Science in Business Administration Major in Human Resource Management', 'CEBA'), ('BSBA-OM', 'Bachelor of Science in Business Administration Major in Operations Management', 'CEBA'), ('AB-PSYC', 'Bachelor of Arts in Psychology', 'CAS'), ('BS-PSYC', 'Bachelor of Science in Psychology', 'CAS'), ('AB-ENGL', 'Bachelor of Arts in English', 'CAS'), ('BS-MATH', 'Bachelor of Science in Mathematics', 'CAS'), ('BS-BIOL', 'Bachelor of Science in Biology', 'CAS'), ('BS-CHEM', 'Bachelor of Science in Chemistry', 'CAS'), ('BS-PHYS', 'Bachelor of Science in Physics', 'CAS'), ('BSN', 'Bachelor of Science in Nursing', 'CON'), ('BEED', 'Bachelor of Elementary Education', 'CTE'), ('BSED-MATH', 'Bachelor of Secondary Education Major in Mathematics', 'CTE'), ('BSED-ENG', 'Bachelor of Secondary Education Major in English', 'CTE'), ('BSED-SCI', 'Bachelor of Secondary Education Major in Science', 'CTE'), ('BSED-SS', 'Bachelor of Secondary Education Major in Social Studies', 'CTE'), ('BSA', 'Bachelor of Science in Accountancy', 'CAF'), ('BSMA', 'Bachelor of Science in Management Accounting', 'CAF'), ('BSFA', 'Bachelor of Science in Financial Analysis', 'CAF'), ('BSTM', 'Bachelor of Science in Tourism Management', 'CITHM'), ('BSHM', 'Bachelor of Science in Hospitality Management', 'CITHM'), ('BSCM', 'Bachelor of Science in Culinary Management', 'CITHM')]
-FILIPINO_FIRST_NAMES_MALE = ['Juan', 'Jose', 'Antonio', 'Pedro', 'Manuel', 'Francisco', 'Ricardo', 'Roberto', 'Luis', 'Carlos', 'Miguel', 'Rafael', 'Daniel', 'Fernando', 'Eduardo', 'Alejandro', 'Joaquin', 'Diego', 'Pablo', 'Sergio', 'Mario', 'Gabriel', 'Victor', 'Raul', 'Jorge', 'Marco', 'Angelo', 'Romeo', 'Emmanuel', 'Christopher', 'Mark', 'John', 'Michael', 'Joshua', 'Matthew', 'David', 'James', 'Ryan', 'Kevin', 'Neil']
-FILIPINO_FIRST_NAMES_FEMALE = ['Maria', 'Ana', 'Carmen', 'Luz', 'Esperanza', 'Rosa', 'Josefa', 'Teresa', 'Gloria', 'Concepcion', 'Pilar', 'Elena', 'Cristina', 'Patricia', 'Angela', 'Beatriz', 'Isabel', 'Monica', 'Sandra', 'Diana', 'Michelle', 'Jennifer', 'Catherine', 'Christine', 'Stephanie', 'Andrea', 'Jessica', 'Nicole', 'Kimberly', 'Mary', 'Grace', 'Joy', 'Faith', 'Hope', 'Love', 'Princess', 'Angel', 'Precious', 'Heart', 'Divine']
-FILIPINO_LAST_NAMES = ['Santos', 'Reyes', 'Cruz', 'Bautista', 'Ocampo', 'Garcia', 'Mendoza', 'Torres', 'Tomas', 'Andres', 'Marquez', 'Robles', 'Aquino', 'Dela Cruz', 'Ramos', 'Villanueva', 'Castillo', 'Morales', 'Ortiz', 'Ramirez', 'Flores', 'Hernandez', 'Gutierrez', 'Gonzales', 'Rodriguez', 'Perez', 'Sanchez', 'Romero', 'Rivera', 'Gomez', 'Francisco', 'Salvador', 'Mercado', 'Navarro', 'Aguilar', 'Diaz', 'Pascual', 'Soriano', 'Valdez', 'Santiago', 'Alvarez', 'Fernandez', 'Cabrera', 'Moreno', 'Herrera', 'Salazar', 'Jimenez', 'Castro', 'Vargas', 'Ruiz']
-# --- End of data lists ---
+COLLEGES_DATA = [
+    ('CASS', 'College of Arts and Social Sciences'),   
+    ('CCS', 'College of Computer Studies'),            
+    ('CEBA', 'College of Business Economics and Accountancy'),  
+    ('CED', 'College of Education'),                    
+    ('CHS', 'College of Health Sciences'),              
+    ('COE', 'College of Engineering'),                  
+    ('CSM', 'College of Science and Mathematics'),      
+]
+
+PROGRAMS_DATA = [
+    # 🖥️  CCS - College of Computer Studies 
+    ('BSCA', 'Bachelor of Science in Computer Applications', 'CCS'),
+    ('BSCS', 'Bachelor of Science in Computer Science', 'CCS'),
+    ('BSIS', 'Bachelor of Science in Information Systems', 'CCS'),
+    ('BSIT', 'Bachelor of Science in Information Technology', 'CCS'),
+
+    # 🏗️  COE - College of Engineering 
+    ('BSCE', 'Bachelor of Science in Civil Engineering', 'COE'),
+    ('BSECE', 'Bachelor of Science in Electronics and Communications Engineering', 'COE'),
+    ('BSEE', 'Bachelor of Science in Electrical Engineering', 'COE'),
+    ('BSIE', 'Bachelor of Science in Industrial Engineering', 'COE'),
+    ('BSME', 'Bachelor of Science in Mechanical Engineering', 'COE'),
+
+    # 💼 CEBA - College of Business Economics and Accountancy 
+    ('BSBA-FM', 'Bachelor of Science in Business Administration Major in Financial Management', 'CEBA'),
+    ('BSBA-HM', 'Bachelor of Science in Business Administration Major in Human Resource Management', 'CEBA'),
+    ('BSBA-MM', 'Bachelor of Science in Business Administration Major in Marketing Management', 'CEBA'),
+    ('BSBA-OM', 'Bachelor of Science in Business Administration Major in Operations Management', 'CEBA'),
+    ('BSA', 'Bachelor of Science in Accountancy', 'CEBA'),
+    ('BSEcon', 'Bachelor of Science in Economics', 'CEBA'),
+    ('BSEntrep', 'Bachelor of Science in Entrepreneurship', 'CEBA'),
+
+    # 🎭 CASS - College of Arts and Social Sciences 
+    ('AB-ENGL', 'Bachelor of Arts in English', 'CASS'),
+    ('AB-PSYC', 'Bachelor of Arts in Psychology', 'CASS'),
+    ('BS-PSYC', 'Bachelor of Science in Psychology', 'CASS'),
+
+    # 🏥 CHS - College of Health Sciences
+    ('BSN', 'Bachelor of Science in Nursing', 'CHS'),
+
+    # 📚 CED - College of  Education (6 programs)
+    ('BEED', 'Bachelor of Elementary Education', 'CED'),
+    ('BSED-ENG', 'Bachelor of Secondary Education Major in English', 'CED'),
+    ('BSED-MATH', 'Bachelor of Secondary Education Major in Mathematics', 'CED'),
+    ('BSED-SCI', 'Bachelor of Secondary Education Major in Science', 'CED'),
+    ('BSED-SS', 'Bachelor of Secondary Education Major in Social Studies', 'CED'),
+]
+
+# ================================================================================
+# 👥 FILIPINO NAMES DATA - Alphabetically Sorted within Categories
+# ================================================================================
+# Comprehensive lists of authentic Filipino names for student generation
+# All names are sorted alphabetically for easy reference and maintenance
+# ================================================================================
+
+# Masculine Filipino First Names (40 names)
+FILIPINO_FIRST_NAMES_MALE = [
+    'Alejandro', 'Angelo', 'Antonio', 'Carlos', 'Christopher', 'Daniel', 'David',
+    'Diego', 'Eduardo', 'Emmanuel', 'Fernando', 'Francisco', 'Gabriel', 'James',
+    'Joaquin', 'John', 'Jorge', 'Jose', 'Joshua', 'Juan', 'Kevin', 'Luis',
+    'Manuel', 'Marco', 'Mario', 'Mark', 'Matthew', 'Michael', 'Miguel', 'Neil',
+    'Pablo', 'Pedro', 'Rafael', 'Raul', 'Ricardo', 'Roberto', 'Romeo', 'Ryan',
+    'Sergio', 'Victor'
+]
+
+# Feminine Filipino First Names (40 names)
+FILIPINO_FIRST_NAMES_FEMALE = [
+    'Ana', 'Andrea', 'Angel', 'Angela', 'Beatriz', 'Carmen', 'Catherine', 'Christine',
+    'Concepcion', 'Cristina', 'Diana', 'Divine', 'Elena', 'Esperanza', 'Faith',
+    'Gloria', 'Grace', 'Heart', 'Hope', 'Isabel', 'Jessica', 'Jennifer', 'Josefa',
+    'Joy', 'Kimberly', 'Love', 'Luz', 'Maria', 'Mary', 'Michelle', 'Monica',
+    'Nicole', 'Patricia', 'Pilar', 'Precious', 'Princess', 'Rosa', 'Sandra',
+    'Stephanie', 'Teresa'
+]
+
+# Filipino Last Names (50 names) - Common surnames in the Philippines
+FILIPINO_LAST_NAMES = [
+    'Aguilar', 'Alvarez', 'Andres', 'Aquino', 'Bautista', 'Cabrera', 'Castillo',
+    'Castro', 'Cruz', 'Dela Cruz', 'Diaz', 'Fernandez', 'Flores', 'Francisco',
+    'Garcia', 'Gomez', 'Gonzales', 'Gutierrez', 'Hernandez', 'Herrera', 'Jimenez',
+    'Marquez', 'Mercado', 'Mendoza', 'Morales', 'Moreno', 'Navarro', 'Ocampo',
+    'Ortiz', 'Pascual', 'Perez', 'Ramirez', 'Ramos', 'Reyes', 'Rivera', 'Robles',
+    'Rodriguez', 'Romero', 'Ruiz', 'Salazar', 'Salvador', 'Sanchez', 'Santiago',
+    'Santos', 'Soriano', 'Tomas', 'Torres', 'Valdez', 'Vargas', 'Villanueva'
+]
+
+# ================================================================================
+# 📊 STUDENT GENERATION SETTINGS
+# ================================================================================
+# Configuration parameters for student creation process
+# ================================================================================
+STUDENT_GENERATION_CONFIG = {
+    'default_student_count': 350,
+    'academic_years': [2020, 2021, 2022, 2023, 2024],
+    'year_levels': [1, 2, 3, 4],
+    'gender_options': ['Male', 'Female']
+}
+
+# ================================================================================
+# 🔐 ADMIN USER CREDENTIALS
+# ================================================================================
+# Default administrator accounts for system access
+# ================================================================================
+DEFAULT_ADMIN_USERS = [
+    ('admin', 'admin@ssis.edu.ph', 'admin123'),
+    ('test', 'test@ssis.edu.ph', 'test123'),
+    ('demo', 'demo@ssis.edu.ph', 'demo123'),
+]
+
+# ====================================================================================
+# End of Organized Data Lists
+# ====================================================================================
 
 def create_colleges():
     # This function is preserved from your original file
@@ -36,52 +141,68 @@ def create_programs():
     print(f"Created {len(programs)} programs")
     return programs
 
-def create_students(programs, target_count=300):
-    # This function is preserved from your original file
+def create_students(programs, target_count=None):
+    """
+    Create students with organized data structure.
+
+    Args:
+        programs: List of Program objects
+        target_count: Number of students to create (uses config default if None)
+    """
+    if target_count is None:
+        target_count = STUDENT_GENERATION_CONFIG['default_student_count']
+
     print(f"Creating {target_count} students...")
-    # ... logic for creating students is preserved ...
+
     students = []
     program_codes = [p.code for p in programs]
-    years = [2020, 2021, 2022, 2023, 2024]
+    years = STUDENT_GENERATION_CONFIG['academic_years']
+    year_levels = STUDENT_GENERATION_CONFIG['year_levels']
+    gender_options = STUDENT_GENERATION_CONFIG['gender_options']
+
     students_per_year = target_count // len(years)
     remaining_students = target_count % len(years)
+
     for year_idx, year in enumerate(years):
         year_student_count = students_per_year + (1 if year_idx < remaining_students else 0)
         existing_count = Student.query.filter(Student.id.like(f'{year}-%')).count()
         student_ids = [f'{year}-{(existing_count + i + 1):04d}' for i in range(year_student_count)]
+
         for i in range(year_student_count):
-            gender = random.choice(['Male', 'Female'])
+            gender = random.choice(gender_options)
             firstname = random.choice(FILIPINO_FIRST_NAMES_MALE) if gender == 'Male' else random.choice(FILIPINO_FIRST_NAMES_FEMALE)
             lastname = random.choice(FILIPINO_LAST_NAMES)
-            student = Student(id=student_ids[i], firstname=firstname, lastname=lastname, course=random.choice(program_codes), year=random.randint(1, 4), gender=gender)
+            student = Student(
+                id=student_ids[i],
+                firstname=firstname,
+                lastname=lastname,
+                course=random.choice(program_codes),
+                year=random.choice(year_levels),
+                gender=gender
+            )
             students.append(student)
+
     db.session.add_all(students)
     db.session.commit()
-    print(f"Successfully created {len(students)} students")
+    print(f"✅ Successfully created {len(students)} students")
     return students
 
 def create_admin_users():
-    """Create default admin users with SECURE hashed passwords."""
+    """Create default admin users with SECURE hashed passwords using organized data."""
     print("Creating admin users...")
-    
-    admin_users = [
-        ('admin', 'admin@ssis.edu.ph', 'admin123'),
-        ('test', 'test@ssis.edu.ph', 'test123'),
-        ('demo', 'demo@ssis.edu.ph', 'demo123'),
-    ]
-    
+
     new_users = []
-    for username, email, password in admin_users:
+    for username, email, password in DEFAULT_ADMIN_USERS:
         if not User.query.filter_by(username=username).first():
             # ** SECURITY UPGRADE **
             user = User(username=username, email=email)
             user.set_password(password) # Use the secure method
             new_users.append(user)
             db.session.add(user)
-    
+
     if new_users:
         db.session.commit()
-    print(f"Created/verified {len(admin_users)} admin users.")
+    print(f"✅ Created/verified {len(DEFAULT_ADMIN_USERS)} admin users.")
 
 def seed_database():
     """Main seeding function, designed to be called via Flask CLI."""

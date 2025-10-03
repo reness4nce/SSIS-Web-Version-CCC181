@@ -50,7 +50,6 @@ function CollegeForm({ onSuccess, college }) {
           value={formData.code}
           onChange={handleChange}
           required
-          disabled={isEdit}
         />
       </div>
       <div className="mb-3">
