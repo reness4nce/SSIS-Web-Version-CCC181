@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import Pagination from '../components/Pagination';
-import { FiArrowUp, FiArrowDown, FiSearch, FiChevronDown } from 'react-icons/fi';
+import { FiArrowUp, FiArrowDown, FiSearch, FiChevronDown, FiEdit, FiTrash2 } from 'react-icons/fi';
 import { showConfirmDialog, showSuccessToast, showErrorToast } from '../utils/alert';
 import Modal from '../components/Modal';
 import StudentForm from './StudentForm';
@@ -15,6 +15,7 @@ const StudentList = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   // Debounced search and filter
   const [debouncedSearch] = useDebounce(searchParams.search, 300);
@@ -45,6 +46,7 @@ const StudentList = () => {
   const handleSearchChange = (e) => {
     setSearchParams({ ...searchParams, [e.target.name]: e.target.value });
     setCurrentPage(1);
+    setHasSearched(true);
   };
 
   const handleSort = (field) => {
@@ -70,6 +72,9 @@ const StudentList = () => {
   };
 
   const handleFormSuccess = () => {
+    // Reset to first page and refresh data
+    setCurrentPage(1);
+    setSearchParams({ search: '', filter: 'all' });
     fetchStudents();
     closeModal();
   };
@@ -83,6 +88,18 @@ const StudentList = () => {
       return sortParams.order === 'asc' ? <FiArrowUp /> : <FiArrowDown />;
     }
     return null;
+  };
+
+  const getSortButtonStyle = (field) => {
+    if (sortParams.sort === field) {
+      return {
+        cursor: 'pointer',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        color: '#fff',
+        fontWeight: 'bold'
+      };
+    }
+    return { cursor: 'pointer' };
   };
 
   return (
@@ -165,12 +182,54 @@ const StudentList = () => {
         <table>
           <thead>
             <tr>
-              <th onClick={() => handleSort('id')} style={{ cursor: 'pointer' }}>ID {renderSortArrow('id')}</th>
-              <th onClick={() => handleSort('firstname')} style={{ cursor: 'pointer' }}>First Name {renderSortArrow('firstname')}</th>
-              <th onClick={() => handleSort('lastname')} style={{ cursor: 'pointer' }}>Last Name {renderSortArrow('lastname')}</th>
-              <th onClick={() => handleSort('course')} style={{ cursor: 'pointer' }}>Course {renderSortArrow('course')}</th>
-              <th onClick={() => handleSort('year')} style={{ cursor: 'pointer' }}>Year {renderSortArrow('year')}</th>
-              <th onClick={() => handleSort('gender')} style={{ cursor: 'pointer' }}>Gender {renderSortArrow('gender')}</th>
+              <th onClick={() => handleSort('id')} style={getSortButtonStyle('id')}>
+                ID {renderSortArrow('id')}
+                {sortParams.sort === 'id' && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
+                    ({sortParams.order === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </th>
+              <th onClick={() => handleSort('firstname')} style={getSortButtonStyle('firstname')}>
+                First Name {renderSortArrow('firstname')}
+                {sortParams.sort === 'firstname' && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
+                    ({sortParams.order === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </th>
+              <th onClick={() => handleSort('lastname')} style={getSortButtonStyle('lastname')}>
+                Last Name {renderSortArrow('lastname')}
+                {sortParams.sort === 'lastname' && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
+                    ({sortParams.order === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </th>
+              <th onClick={() => handleSort('course')} style={getSortButtonStyle('course')}>
+                Course {renderSortArrow('course')}
+                {sortParams.sort === 'course' && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
+                    ({sortParams.order === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </th>
+              <th onClick={() => handleSort('year')} style={getSortButtonStyle('year')}>
+                Year {renderSortArrow('year')}
+                {sortParams.sort === 'year' && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
+                    ({sortParams.order === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </th>
+              <th onClick={() => handleSort('gender')} style={getSortButtonStyle('gender')}>
+                Gender {renderSortArrow('gender')}
+                {sortParams.sort === 'gender' && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
+                    ({sortParams.order === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -178,23 +237,57 @@ const StudentList = () => {
             {students && students.length > 0 ? (
               students.map((student) => (
                 <tr key={student.id}>
-                  <td>{student.id}</td>
-                  <td>{student.firstname}</td>
-                  <td>{student.lastname}</td>
-                  <td>{student.course}</td>
-                  <td>{student.year}</td>
-                  <td>{student.gender}</td>
+                  <td>{student.id || 'N/A'}</td>
+                  <td>{student.firstname || 'N/A'}</td>
+                  <td>{student.lastname || 'N/A'}</td>
+                  <td>{student.course || 'N/A'}</td>
+                  <td>{student.year || 'N/A'}</td>
+                  <td>{student.gender || 'N/A'}</td>
                   <td>
-                    <button className="btn btn-warning btn-sm" onClick={() => openEditModal(student)}>Edit</button>
-                    <button className="btn btn-danger btn-sm ml-2" onClick={() => handleDelete(student.id)}>Delete</button>
+                    <button
+                      className="btn btn-warning btn-sm"
+                      onClick={() => openEditModal(student)}
+                      aria-label={`Edit student ${student.firstname} ${student.lastname}`}
+                      title="Edit student"
+                    >
+                      <FiEdit size={14} style={{ marginRight: '4px' }} />
+                      Edit
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm ml-2"
+                      onClick={() => handleDelete(student.id)}
+                      aria-label={`Delete student ${student.firstname} ${student.lastname}`}
+                      title="Delete student"
+                    >
+                      <FiTrash2 size={14} style={{ marginRight: '4px' }} />
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
                 <td colSpan="7" className="empty-state">
-                  <div className="empty-state-icon">👥</div>
-                  <div className="empty-state-text">No students found.</div>
+                  <div className="empty-state-icon">
+                    {hasSearched && (searchParams.search || searchParams.filter !== 'all') ? '🔍' : '👥'}
+                  </div>
+                  <div className="empty-state-text">
+                    {hasSearched && (searchParams.search || searchParams.filter !== 'all')
+                      ? `No students found matching "${searchParams.search}" in ${searchParams.filter === 'all' ? 'all fields' : searchParams.filter}.`
+                      : 'No students found.'}
+                  </div>
+                  {hasSearched && (searchParams.search || searchParams.filter !== 'all') && (
+                    <button
+                      className="btn btn-primary mt-3"
+                      onClick={() => {
+                        setSearchParams({ search: '', filter: 'all' });
+                        setHasSearched(false);
+                        setCurrentPage(1);
+                      }}
+                    >
+                      Clear Search
+                    </button>
+                  )}
                 </td>
               </tr>
             )}

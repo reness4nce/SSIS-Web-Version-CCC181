@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import api from "../services/api";
+import { showSuccessToast, showErrorToast } from "../utils/alert";
 
 function CollegeForm({ onSuccess, college }) {
   const isEdit = !!college;
@@ -22,21 +23,26 @@ function CollegeForm({ onSuccess, college }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage("");
+
     if (!formData.code || !formData.name) {
-      setErrorMessage("Code and Name are required.");
+      showErrorToast("Code and Name are required.");
       return;
     }
 
     try {
       if (isEdit) {
         await api.updateCollege(formData.code, formData);
+        showSuccessToast("College updated successfully!");
       } else {
         await api.createCollege(formData);
+        showSuccessToast("College created successfully!");
       }
       if (onSuccess) onSuccess();
     } catch (err) {
       console.error("Failed to save college:", err);
-      setErrorMessage("Failed to save college. Please try again.");
+      const errorMessage = err.response?.data?.error || "Failed to save college. Please try again.";
+      showErrorToast(errorMessage);
     }
   };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import Pagination from '../components/Pagination';
-import { FiArrowUp, FiArrowDown, FiSearch, FiChevronDown } from 'react-icons/fi';
+import { FiArrowUp, FiArrowDown, FiSearch, FiChevronDown, FiEdit, FiTrash2 } from 'react-icons/fi';
 import { showConfirmDialog, showSuccessToast, showErrorToast } from '../utils/alert';
 import Modal from '../components/Modal';
 import ProgramForm from './ProgramForm';
@@ -15,6 +15,7 @@ const ProgramList = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const [debouncedSearch] = useDebounce(searchParams.search, 300);
   const [debouncedFilter] = useDebounce(searchParams.filter, 300);
@@ -44,6 +45,7 @@ const ProgramList = () => {
   const handleSearchChange = (e) => {
     setSearchParams({ ...searchParams, [e.target.name]: e.target.value });
     setCurrentPage(1);
+    setHasSearched(true);
   };
 
   const handleSort = (field) => {
@@ -69,6 +71,9 @@ const ProgramList = () => {
   };
 
   const handleFormSuccess = () => {
+    // Reset to first page and refresh data
+    setCurrentPage(1);
+    setSearchParams({ search: '', filter: 'all' });
     fetchPrograms();
     closeModal();
   };
@@ -82,6 +87,18 @@ const ProgramList = () => {
       return sortParams.order === 'asc' ? <FiArrowUp /> : <FiArrowDown />;
     }
     return null;
+  };
+
+  const getSortButtonStyle = (field) => {
+    if (sortParams.sort === field) {
+      return {
+        cursor: 'pointer',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        color: '#fff',
+        fontWeight: 'bold'
+      };
+    }
+    return { cursor: 'pointer' };
   };
 
   return (
@@ -163,9 +180,30 @@ const ProgramList = () => {
         <table>
           <thead>
             <tr>
-              <th onClick={() => handleSort('code')}>Code {renderSortArrow('code')}</th>
-              <th onClick={() => handleSort('name')}>Name {renderSortArrow('name')}</th>
-              <th onClick={() => handleSort('college')}>College {renderSortArrow('college')}</th>
+              <th onClick={() => handleSort('code')} style={getSortButtonStyle('code')}>
+                Code {renderSortArrow('code')}
+                {sortParams.sort === 'code' && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
+                    ({sortParams.order === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </th>
+              <th onClick={() => handleSort('name')} style={getSortButtonStyle('name')}>
+                Name {renderSortArrow('name')}
+                {sortParams.sort === 'name' && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
+                    ({sortParams.order === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </th>
+              <th onClick={() => handleSort('college')} style={getSortButtonStyle('college')}>
+                College {renderSortArrow('college')}
+                {sortParams.sort === 'college' && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
+                    ({sortParams.order === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -173,18 +211,54 @@ const ProgramList = () => {
             {programs && programs.length > 0 ? (
               programs.map((program) => (
                 <tr key={program.code}>
-                  <td>{program.code}</td><td>{program.name}</td><td>{program.college}</td>
+                  <td>{program.code || 'N/A'}</td>
+                  <td>{program.name || 'N/A'}</td>
+                  <td>{program.college || 'N/A'}</td>
                   <td>
-                    <button className="btn btn-warning btn-sm" onClick={() => openEditModal(program)}>Edit</button>
-                    <button className="btn btn-danger btn-sm ml-2" onClick={() => handleDelete(program.code)}>Delete</button>
+                    <button
+                      className="btn btn-warning btn-sm"
+                      onClick={() => openEditModal(program)}
+                      aria-label={`Edit program ${program.name}`}
+                      title="Edit program"
+                    >
+                      <FiEdit size={14} style={{ marginRight: '4px' }} />
+                      Edit
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm ml-2"
+                      onClick={() => handleDelete(program.code)}
+                      aria-label={`Delete program ${program.name}`}
+                      title="Delete program"
+                    >
+                      <FiTrash2 size={14} style={{ marginRight: '4px' }} />
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
                 <td colSpan="4" className="empty-state">
-                  <div className="empty-state-icon">📚</div>
-                  <div className="empty-state-text">No programs found.</div>
+                  <div className="empty-state-icon">
+                    {hasSearched && (searchParams.search || searchParams.filter !== 'all') ? '🔍' : '📚'}
+                  </div>
+                  <div className="empty-state-text">
+                    {hasSearched && (searchParams.search || searchParams.filter !== 'all')
+                      ? `No programs found matching "${searchParams.search}" in ${searchParams.filter === 'all' ? 'all fields' : searchParams.filter}.`
+                      : 'No programs found.'}
+                  </div>
+                  {hasSearched && (searchParams.search || searchParams.filter !== 'all') && (
+                    <button
+                      className="btn btn-primary mt-3"
+                      onClick={() => {
+                        setSearchParams({ search: '', filter: 'all' });
+                        setHasSearched(false);
+                        setCurrentPage(1);
+                      }}
+                    >
+                      Clear Search
+                    </button>
+                  )}
                 </td>
               </tr>
             )}

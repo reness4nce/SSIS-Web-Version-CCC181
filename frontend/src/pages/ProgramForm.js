@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import api from "../services/api";
+import { showSuccessToast, showErrorToast } from "../utils/alert";
 
 function ProgramForm({ onSuccess, program }) {
   const isEdit = !!program;
@@ -36,21 +37,26 @@ function ProgramForm({ onSuccess, program }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage("");
+
     if (!formData.code || !formData.name || !formData.college) {
-      setErrorMessage("All fields are required.");
+      showErrorToast("All fields are required.");
       return;
     }
 
     try {
       if (isEdit) {
         await api.updateProgram(formData.code, formData);
+        showSuccessToast("Program updated successfully!");
       } else {
         await api.createProgram(formData);
+        showSuccessToast("Program created successfully!");
       }
       if (onSuccess) onSuccess();
     } catch (err) {
       console.error("Failed to save program:", err);
-      setErrorMessage("Failed to save program. Please try again.");
+      const errorMessage = err.response?.data?.error || "Failed to save program. Please try again.";
+      showErrorToast(errorMessage);
     }
   };
 
