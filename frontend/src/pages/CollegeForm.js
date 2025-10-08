@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import api from "../services/api";
 import { showSuccessToast, showErrorToast } from "../utils/alert";
 
-function CollegeForm({ onSuccess, college }) {
+function CollegeForm({ onSuccess, college, onClose }) {
   const isEdit = !!college;
 
   const [formData, setFormData] = useState({ code: "", name: "" });
@@ -32,7 +32,8 @@ function CollegeForm({ onSuccess, college }) {
 
     try {
       if (isEdit) {
-        await api.updateCollege(formData.code, formData);
+        // Use original college code in URL, updated data in body
+        await api.updateCollege(college.code, formData);
         showSuccessToast("College updated successfully!");
       } else {
         await api.createCollege(formData);
@@ -41,37 +42,91 @@ function CollegeForm({ onSuccess, college }) {
       if (onSuccess) onSuccess();
     } catch (err) {
       console.error("Failed to save college:", err);
-      const errorMessage = err.response?.data?.error || "Failed to save college. Please try again.";
-      showErrorToast(errorMessage);
+
+      // Handle validation errors (plural array format from backend)
+      if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
+        const validationErrors = err.response.data.errors;
+        // Show the first validation error or join multiple errors
+        const errorMessage = validationErrors.length === 1
+          ? validationErrors[0]
+          : validationErrors.join(", ");
+        showErrorToast(errorMessage);
+      }
+      // Handle single error format (fallback)
+      else if (err.response?.data?.error) {
+        showErrorToast(err.response.data.error);
+      }
+      // Handle generic errors
+      else {
+        showErrorToast("Failed to save college. Please try again.");
+      }
     }
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="mb-3">
-        <label>Code</label>
+    <form onSubmit={handleSubmit} className="modal-form">
+      {errorMessage && (
+        <div className="modal-error" role="alert">
+          {errorMessage}
+        </div>
+      )}
+
+      <div className="form-group">
+        <label htmlFor="college-code" className="form-label">
+          College Code
+        </label>
         <input
+          id="college-code"
           name="code"
           className="form-control"
+          placeholder="e.g., CCS, CASS, CED"
           value={formData.code}
           onChange={handleChange}
           required
+          aria-describedby={errorMessage ? "code-error" : undefined}
         />
+        {errorMessage && (
+          <span id="code-error" className="modal-field-error" role="alert">
+            {errorMessage}
+          </span>
+        )}
       </div>
-      <div className="mb-3">
-        <label>Name</label>
+
+      <div className="form-group">
+        <label htmlFor="college-name" className="form-label">
+          College Name
+        </label>
         <input
+          id="college-name"
           name="name"
           className="form-control"
+          placeholder="e.g., College of Computer Studies"
           value={formData.name}
           onChange={handleChange}
           required
+          aria-describedby={errorMessage ? "name-error" : undefined}
         />
+        {errorMessage && (
+          <span id="name-error" className="modal-field-error" role="alert">
+            {errorMessage}
+          </span>
+        )}
       </div>
-      {errorMessage && <div className="text-danger mt-2">{errorMessage}</div>}
+
       <div className="modal-footer">
-        <button className="btn btn-primary" type="submit">
-          {isEdit ? "Update" : "Add"}
+        <button
+          type="button"
+          className="modal-btn modal-btn-secondary"
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="modal-btn modal-btn-primary"
+          disabled={!formData.code.trim() || !formData.name.trim()}
+        >
+          {isEdit ? "Update College" : "Add College"}
         </button>
       </div>
     </form>

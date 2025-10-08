@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-// We no longer need the 'api' service for this mocked version.
+import api from '../services/api';
 
 // Create the context
 const AuthContext = createContext(null);
@@ -10,37 +10,51 @@ export const useAuth = () => useContext(AuthContext);
 // Create the provider component
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
-  // We can set isLoading to false initially since we aren't fetching anything on load.
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // This function simulates logging in by checking hardcoded credentials.
-  const login = async (username, password) => {
-    return new Promise((resolve, reject) => {
-      // Simulate a network delay
-      setTimeout(() => {
-        if (username === 'admin' && password === 'admin123') {
-          // On success, create a mock user object
-          const mockUser = {
-            id: 1,
-            username: 'admin',
-            email: 'admin@ssis.edu.ph',
-          };
-          setCurrentUser(mockUser);
-          resolve(mockUser); // Resolve the promise on success
-        } else {
-          // On failure, reject the promise with an error
-          const error = new Error('Invalid username or password');
-          // Mimic an axios error object so the login page can read it
-          error.response = { data: { error: 'Invalid username or password' } };
-          reject(error);
+  // Check authentication status on app load
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await api.checkAuthStatus();
+        if (response.data.isAuthenticated) {
+          setCurrentUser(response.data.user);
         }
-      }, 500); // 500ms delay
-    });
+      } catch (error) {
+        console.log('Not authenticated or server not available');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // Real login function using the API service
+  const login = async (username, password) => {
+    try {
+      setIsLoading(true);
+      const response = await api.login(username, password);
+
+      // Set the current user from the response
+      setCurrentUser(response.data.user);
+      return response.data.user;
+    } catch (error) {
+      setIsLoading(false);
+      throw error; // Re-throw to let the component handle the error
+    }
   };
 
-  // This function simulates logging out
+  // Real logout function using the API service
   const logout = async () => {
-    setCurrentUser(null);
+    try {
+      await api.logout();
+      setCurrentUser(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Even if API call fails, clear the local state
+      setCurrentUser(null);
+    }
   };
 
   // The value provided to consuming components

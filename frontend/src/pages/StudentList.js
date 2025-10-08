@@ -13,6 +13,7 @@ const StudentList = () => {
   const [sortParams, setSortParams] = useState({ sort: 'id', order: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -26,13 +27,14 @@ const StudentList = () => {
       const response = await api.getStudents({
         page: currentPage,
         per_page: 10,
-        search: debouncedSearch,
+        search: debouncedSearch,  // Use debounced values for better performance
         filter: debouncedFilter,
         sort: sortParams.sort,
         order: sortParams.order,
       });
       setStudents(response.data.items);
       setTotalPages(response.data.pages);
+      setTotalItems(response.data.total);
     } catch (error) {
       showErrorToast('Error fetching students.');
       console.error("Error fetching students:", error);
@@ -72,15 +74,33 @@ const StudentList = () => {
   };
 
   const handleFormSuccess = () => {
-    // Reset to first page and refresh data
+    // Reset to first page and refresh data immediately
     setCurrentPage(1);
     setSearchParams({ search: '', filter: 'all' });
+    setHasSearched(false);
+    // Force immediate refresh
     fetchStudents();
-    closeModal();
+    // Close modal after a brief delay to allow state to update
+    setTimeout(() => {
+      closeModal();
+    }, 100);
   };
 
   const openAddModal = () => { setEditingStudent(null); setIsModalOpen(true); };
-  const openEditModal = (student) => { setEditingStudent(student); setIsModalOpen(true); };
+  const openEditModal = async (student) => {
+    // Always fetch fresh data when opening edit modal to ensure we have latest changes
+    try {
+      const response = await api.getStudent(student.id);
+      const freshStudent = response.data;
+      setEditingStudent(freshStudent);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error("Error fetching fresh student data:", error);
+      // Fallback to using the provided student data if fresh fetch fails
+      setEditingStudent(student);
+      setIsModalOpen(true);
+    }
+  };
   const closeModal = () => { setIsModalOpen(false); setEditingStudent(null); };
 
   const renderSortArrow = (field) => {
@@ -299,11 +319,11 @@ const StudentList = () => {
         currentPage={currentPage}
         totalPages={totalPages}
         onPageChange={handlePageChange}
-        totalItems={totalPages * 10}
+        totalItems={totalItems}
         itemsPerPage={10}
       />
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingStudent ? 'Edit Student' : 'Add Student'}>
-        <StudentForm onSuccess={handleFormSuccess} student={editingStudent} />
+        <StudentForm onSuccess={handleFormSuccess} student={editingStudent} onClose={closeModal} />
       </Modal>
     </div>
   );

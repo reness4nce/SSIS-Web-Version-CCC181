@@ -3,7 +3,7 @@ import axios from "axios";
 
 // This apiClient is for your main API endpoints (/colleges, /students, etc.)
 const apiClient = axios.create({
-  baseURL: "http://localhost:5000/api", // Correct for your /api/* routes
+  baseURL: "http://localhost:5000", // Updated to match backend routes without /api prefix
   withCredentials: true, // This is CRUCIAL for sending session cookies
   headers: {
     "Content-Type": "application/json",
@@ -48,6 +48,38 @@ const api = {
     return authApiClient.get("/auth/status");
   },
 
+  /**
+   * Gets dashboard statistics.
+   * @returns {Promise<object>} Dashboard statistics including totals for students, programs, and colleges.
+   */
+  getDashboardStats() {
+    return authApiClient.get("/auth/dashboard");
+  },
+
+  /**
+   * Gets dashboard chart data.
+   * @returns {Promise<object>} Chart data for students by program and college visualizations.
+   */
+  getDashboardCharts() {
+    return authApiClient.get("/auth/dashboard/charts");
+  },
+
+  /**
+   * Sends signup data to the backend.
+   * @param {string} username The user's desired username.
+   * @param {string} email The user's email address.
+   * @param {string} password The user's password.
+   * @param {string} confirmPassword The user's password confirmation.
+   * @returns {Promise<object>} The response from the backend.
+   */
+  signup(username, email, password, confirmPassword) {
+    return authApiClient.post("/auth/signup", {
+      username,
+      email,
+      password,
+      confirm_password: confirmPassword
+    });
+  },
 
   // -------- Your Existing API Functions (Unchanged) --------
   

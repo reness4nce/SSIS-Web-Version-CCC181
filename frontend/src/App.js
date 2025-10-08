@@ -7,6 +7,8 @@ import StudentList from './pages/StudentList';
 import CollegeList from './pages/CollegeList';
 import ProgramList from './pages/ProgramList';
 import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
+import Dashboard from './pages/Dashboard';
 
 // Layout Components
 import Sidebar from './components/Sidebar';
@@ -28,15 +30,9 @@ const ProtectedLayout = () => {
     );
 };
 
-// --- NEW, MORE ROBUST App COMPONENT ---
+// --- OPTIMIZED App COMPONENT - No loading screen ---
 function App() {
-  const { currentUser, isLoading } = useAuth();
-
-  // If we are still checking the initial auth status, show a loading message
-  // This prevents a "flash" of the login page for already-logged-in users on refresh
-  if (isLoading) {
-    return <div>Loading...</div>;
-  }
+  const { currentUser } = useAuth();
 
   return (
     <Routes>
@@ -45,15 +41,21 @@ function App() {
           - If a user is logged in, visiting /login will redirect them to the homepage.
           - If they are not logged in, it will show the LoginPage.
         */}
-        <Route 
-          path="/login" 
-          element={currentUser ? <Navigate to="/" replace /> : <LoginPage />} 
+        <Route
+          path="/login"
+          element={currentUser ? <Navigate to="/" replace /> : <LoginPage />}
+        />
+
+        <Route
+          path="/signup"
+          element={currentUser ? <Navigate to="/" replace /> : <SignupPage />}
         />
 
         {/* --- PROTECTED ROUTES --- */}
         {/* This part remains the same. It's already correctly implemented. */}
         <Route element={<ProtectedLayout />}>
-            <Route path="/" element={<StudentList />} />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/students" element={<StudentList />} />
             <Route path="/colleges" element={<CollegeList />} />
             <Route path="/programs" element={<ProgramList />} />
         </Route>

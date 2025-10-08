@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { FaSchool, FaSignOutAlt } from 'react-icons/fa';
+import { FaSchool, FaSignOutAlt, FaTachometerAlt, FaUsers, FaBook, FaUniversity } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 import './Sidebar.css';
 
@@ -26,13 +26,20 @@ const Sidebar = () => {
             </div>
             <nav className="nav-links">
                 <NavLink to="/" className={({ isActive }) => "nav-link" + (isActive ? " active" : "")} end>
-                    Students
+                    <FaTachometerAlt className="nav-icon" />
+                    <span className="nav-text">Dashboard</span>
+                </NavLink>
+                <NavLink to="/students" className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
+                    <FaUsers className="nav-icon" />
+                    <span className="nav-text">Students</span>
                 </NavLink>
                 <NavLink to="/programs" className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-                    Programs
+                    <FaBook className="nav-icon" />
+                    <span className="nav-text">Programs</span>
                 </NavLink>
                 <NavLink to="/colleges" className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-                    Colleges
+                    <FaUniversity className="nav-icon" />
+                    <span className="nav-text">Colleges</span>
                 </NavLink>
             </nav>
             

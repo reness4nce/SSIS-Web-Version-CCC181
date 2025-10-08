@@ -13,6 +13,7 @@ const CollegeList = () => {
   const [sortParams, setSortParams] = useState({ sort: 'code', order: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCollege, setEditingCollege] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -25,13 +26,14 @@ const CollegeList = () => {
       const response = await api.getColleges({
         page: currentPage,
         per_page: 10,
-        search: debouncedSearch,
+        search: debouncedSearch,  // Use debounced values for better performance
         filter: debouncedFilter,
         sort: sortParams.sort,
         order: sortParams.order,
       });
       setColleges(response.data.items);
       setTotalPages(response.data.pages);
+      setTotalItems(response.data.total);
     } catch (error) {
       showErrorToast('Error fetching colleges.');
       console.error("Error fetching colleges:", error);
@@ -58,28 +60,85 @@ const CollegeList = () => {
   };
 
   const handleDelete = async (code) => {
-    const result = await showConfirmDialog({ title: 'Are you sure?', text: 'This college will be permanently deleted.' });
-    if (result.isConfirmed) {
-      try {
-        await api.deleteCollege(code);
-        showSuccessToast('College deleted successfully!');
-        fetchColleges();
-      } catch (error) {
-        showErrorToast(error.response?.data?.error || 'Error deleting college.');
+    try {
+      // First, get the college details to check for dependencies
+      const collegeResponse = await api.getCollege(code);
+      const college = collegeResponse.data;
+
+      // Check if college has programs
+      if (college.programs && college.programs.length > 0) {
+        const programCount = college.programs.length;
+        const enrolledStudents = college.total_students || 0;
+
+        const warningMessage = `This college has ${programCount} program${programCount > 1 ? 's' : ''} with ${enrolledStudents} enrolled student${enrolledStudents !== 1 ? 's' : ''}. Deleting this college will affect all associated programs and students. Are you sure you want to proceed?`;
+
+        const result = await showConfirmDialog({
+          title: 'Cannot Delete College',
+          text: warningMessage,
+          confirmButtonText: 'I Understand, Delete Anyway',
+          confirmButtonColor: '#d33',
+          showCancelButton: true
+        });
+
+        if (!result.isConfirmed) {
+          return;
+        }
+      } else {
+        // No programs, show standard confirmation
+        const result = await showConfirmDialog({
+          title: 'Delete College',
+          text: 'This college will be permanently deleted. Are you sure?',
+          confirmButtonText: 'Delete College'
+        });
+
+        if (!result.isConfirmed) {
+          return;
+        }
       }
+
+      // Attempt deletion
+      await api.deleteCollege(code);
+      showSuccessToast('College deleted successfully!');
+      fetchColleges();
+    } catch (error) {
+      if (error.response?.status === 400) {
+        // Backend validation error - show the specific error message
+        showErrorToast(error.response.data.error || 'Cannot delete college due to existing dependencies.');
+      } else {
+        showErrorToast('Error deleting college. Please try again.');
+      }
+      console.error('Error deleting college:', error);
     }
   };
 
   const handleFormSuccess = () => {
-    // Reset to first page and refresh data
+    // Reset to first page and refresh data immediately
     setCurrentPage(1);
     setSearchParams({ search: '', filter: 'all' });
+    setHasSearched(false);
+    // Force immediate refresh
     fetchColleges();
-    closeModal();
+    // Close modal after a brief delay to allow state to update
+    setTimeout(() => {
+      closeModal();
+    }, 100);
   };
 
   const openAddModal = () => { setEditingCollege(null); setIsModalOpen(true); };
-  const openEditModal = (college) => { setEditingCollege(college); setIsModalOpen(true); };
+  const openEditModal = async (college) => {
+    // Always fetch fresh data when opening edit modal to ensure we have latest changes
+    try {
+      const response = await api.getCollege(college.code);
+      const freshCollege = response.data;
+      setEditingCollege(freshCollege);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error("Error fetching fresh college data:", error);
+      // Fallback to using the provided college data if fresh fetch fails
+      setEditingCollege(college);
+      setIsModalOpen(true);
+    }
+  };
   const closeModal = () => { setIsModalOpen(false); setEditingCollege(null); };
 
   const renderSortArrow = (field) => {
@@ -258,11 +317,11 @@ const CollegeList = () => {
         currentPage={currentPage}
         totalPages={totalPages}
         onPageChange={handlePageChange}
-        totalItems={totalPages * 10}
+        totalItems={totalItems}
         itemsPerPage={10}
       />
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingCollege ? 'Edit College' : 'Add College'}>
-        <CollegeForm onSuccess={handleFormSuccess} college={editingCollege} />
+        <CollegeForm onSuccess={handleFormSuccess} college={editingCollege} onClose={closeModal} />
       </Modal>
     </div>
   );

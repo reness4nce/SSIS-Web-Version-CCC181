@@ -4,7 +4,7 @@ import Swal from 'sweetalert2';
 export const showSuccessToast = (message) => {
     Swal.fire({
         toast: true,
-        position: 'top-end',
+        position: 'bottom-end',
         icon: 'success',
         title: message,
         showConfirmButton: false,
@@ -17,7 +17,7 @@ export const showSuccessToast = (message) => {
 export const showErrorToast = (message) => {
     Swal.fire({
         toast: true,
-        position: 'top-end',
+        position: 'bottom-end',
         icon: 'error',
         title: message,
         showConfirmButton: false,
@@ -30,7 +30,7 @@ export const showErrorToast = (message) => {
 export const showWarningToast = (message) => {
     Swal.fire({
         toast: true,
-        position: 'top-end',
+        position: 'bottom-end',
         icon: 'warning',
         title: message,
         showConfirmButton: false,
@@ -43,7 +43,7 @@ export const showWarningToast = (message) => {
 export const showInfoToast = (message) => {
     Swal.fire({
         toast: true,
-        position: 'top-end',
+        position: 'bottom-end',
         icon: 'info',
         title: message,
         showConfirmButton: false,
