@@ -16,7 +16,9 @@ const StudentList = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
+  const [originalEditingId, setOriginalEditingId] = useState(null); // For tracking ID changes in edit
   const [hasSearched, setHasSearched] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   // Debounced search and filter
   const [debouncedSearch] = useDebounce(searchParams.search, 300);
@@ -39,7 +41,7 @@ const StudentList = () => {
       showErrorToast('Error fetching students.');
       console.error("Error fetching students:", error);
     }
-  }, [currentPage, debouncedSearch, debouncedFilter, sortParams]);
+  }, [currentPage, debouncedSearch, debouncedFilter, sortParams.sort, sortParams.order]);
 
   useEffect(() => {
     fetchStudents();
@@ -73,13 +75,24 @@ const StudentList = () => {
     }
   };
 
-  const handleFormSuccess = () => {
-    // Reset to first page and refresh data immediately
-    setCurrentPage(1);
-    setSearchParams({ search: '', filter: 'all' });
-    setHasSearched(false);
-    // Force immediate refresh
-    fetchStudents();
+  const handleFormSuccess = (studentData, operation) => {
+    if (operation === 'update' && studentData && originalEditingId) {
+      // For updates, replace the student in the current list
+      // This preserves pagination, search, and filter state
+      setStudents(prev =>
+        prev.map(student =>
+          student.id === originalEditingId ? studentData : student
+        )
+      );
+    } else if (operation === 'create' && studentData) {
+      // For new students, refresh to show the new record
+      // (it might be on a different page or filtered out)
+      fetchStudents();
+    } else {
+      // Fallback: refresh data
+      fetchStudents();
+    }
+
     // Close modal after a brief delay to allow state to update
     setTimeout(() => {
       closeModal();
@@ -88,6 +101,9 @@ const StudentList = () => {
 
   const openAddModal = () => { setEditingStudent(null); setIsModalOpen(true); };
   const openEditModal = async (student) => {
+    // Save the original ID for handling any ID changes
+    setOriginalEditingId(student.id);
+
     // Always fetch fresh data when opening edit modal to ensure we have latest changes
     try {
       const response = await api.getStudent(student.id);
@@ -101,7 +117,11 @@ const StudentList = () => {
       setIsModalOpen(true);
     }
   };
-  const closeModal = () => { setIsModalOpen(false); setEditingStudent(null); };
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingStudent(null);
+    setOriginalEditingId(null);
+  };
 
   const renderSortArrow = (field) => {
     if (sortParams.sort === field) {
@@ -127,69 +147,50 @@ const StudentList = () => {
       <div className="main-header">
         <h1 className="header-title">Students</h1>
         <div className="header-actions" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <div className="search-bar" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: 380 }}>
-            
-            {/* Filter Dropdown with Custom Icon */}
-            <div style={{ position: 'relative', width: 130 }}>
-              <select
-                name="filter"
-                value={searchParams.filter}
-                onChange={handleSearchChange}
-                className="form-control"
-                style={{
-                  width: '100%',
-                  appearance: 'none',
-                  WebkitAppearance: 'none',
-                  MozAppearance: 'none',
-                  paddingRight: '2em',
-                  background: 'none'
-                }}
-              >
-                <option value="all">All Fields</option>
-                <option value="id">Student ID</option>
-                <option value="firstname">First Name</option>
-                <option value="lastname">Last Name</option>
-                <option value="course">Course</option>
-              </select>
-              <span style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                pointerEvents: 'none',
-                color: '#aaa',
-                zIndex: 2,
-              }}>
-                <FiChevronDown size={19} />
-              </span>
+          <div className="search-container" style={{ width: 380 }}>
+            <div className={`search-input-container ${isSearching ? 'searching' : ''}`}>
+              {/* Filter Dropdown with enhanced accessibility */}
+              <div className={`filter-dropdown ${searchParams.filter !== 'all' ? 'filter-active' : ''}`}>
+                <select
+                  name="filter"
+                  value={searchParams.filter}
+                  onChange={handleSearchChange}
+                  className="form-control"
+                  aria-label="Search field filter"
+                >
+                  <option value="all">Search all fields</option>
+                  <option value="id">Search by Student ID</option>
+                  <option value="firstname">Search by First Name</option>
+                  <option value="lastname">Search by Last Name</option>
+                  <option value="course">Search by Course</option>
+                </select>
+                <FiChevronDown className="dropdown-icon" aria-hidden="true" />
+              </div>
+
+              {/* Enhanced Search Input */}
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  type="text"
+                  className="form-control search-input"
+                  name="search"
+                  placeholder="Search students..."
+                  value={searchParams.search}
+                  onChange={(e) => {
+                    handleSearchChange(e);
+                    setIsSearching(true);
+                    // Reset searching state after debounce delay
+                    setTimeout(() => setIsSearching(false), 350);
+                  }}
+                  aria-label={`Search students by ${searchParams.filter}`}
+                  autoComplete="off"
+                  style={{ paddingRight: '3rem' }}
+                />
+                <FiSearch className="search-icon" aria-hidden="true" />
+                <div className="search-spinner" aria-hidden="true"></div>
+              </div>
             </div>
 
-            {/* Search Input with Icon */}
-            <div style={{ position: 'relative', flex: 1 }}>
-              <input
-                type="text"
-                className="form-control search-input"
-                name="search"
-                placeholder={`Search by ${searchParams.filter === 'all' ? 'All Fields' : searchParams.filter.replace(/^\w/, (c) => c.toUpperCase())}`}
-                value={searchParams.search}
-                onChange={handleSearchChange}
-                aria-label={`Search students by ${searchParams.filter}`}
-                autoComplete="on"
-                style={{ paddingRight: '2.5rem', width: '100%' }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  right: 10,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  pointerEvents: 'none',
-                  color: '#aaa',
-                }}
-              >
-                <FiSearch size={18} />
-              </span>
-            </div>
+
           </div>
 
           <button className="btn add-btn" onClick={openAddModal}>
@@ -202,7 +203,7 @@ const StudentList = () => {
         <table>
           <thead>
             <tr>
-              <th onClick={() => handleSort('id')} style={getSortButtonStyle('id')}>
+              <th className="col-id" onClick={() => handleSort('id')} style={getSortButtonStyle('id')}>
                 ID {renderSortArrow('id')}
                 {sortParams.sort === 'id' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -210,7 +211,7 @@ const StudentList = () => {
                   </span>
                 )}
               </th>
-              <th onClick={() => handleSort('firstname')} style={getSortButtonStyle('firstname')}>
+              <th className="col-name" onClick={() => handleSort('firstname')} style={getSortButtonStyle('firstname')}>
                 First Name {renderSortArrow('firstname')}
                 {sortParams.sort === 'firstname' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -218,7 +219,7 @@ const StudentList = () => {
                   </span>
                 )}
               </th>
-              <th onClick={() => handleSort('lastname')} style={getSortButtonStyle('lastname')}>
+              <th className="col-name" onClick={() => handleSort('lastname')} style={getSortButtonStyle('lastname')}>
                 Last Name {renderSortArrow('lastname')}
                 {sortParams.sort === 'lastname' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -226,7 +227,7 @@ const StudentList = () => {
                   </span>
                 )}
               </th>
-              <th onClick={() => handleSort('course')} style={getSortButtonStyle('course')}>
+              <th className="col-course" onClick={() => handleSort('course')} style={getSortButtonStyle('course')}>
                 Course {renderSortArrow('course')}
                 {sortParams.sort === 'course' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -234,7 +235,7 @@ const StudentList = () => {
                   </span>
                 )}
               </th>
-              <th onClick={() => handleSort('year')} style={getSortButtonStyle('year')}>
+              <th className="col-year" onClick={() => handleSort('year')} style={getSortButtonStyle('year')}>
                 Year {renderSortArrow('year')}
                 {sortParams.sort === 'year' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -242,7 +243,7 @@ const StudentList = () => {
                   </span>
                 )}
               </th>
-              <th onClick={() => handleSort('gender')} style={getSortButtonStyle('gender')}>
+              <th className="col-gender" onClick={() => handleSort('gender')} style={getSortButtonStyle('gender')}>
                 Gender {renderSortArrow('gender')}
                 {sortParams.sort === 'gender' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -250,7 +251,7 @@ const StudentList = () => {
                   </span>
                 )}
               </th>
-              <th>Actions</th>
+              <th className="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -260,28 +261,30 @@ const StudentList = () => {
                   <td>{student.id || 'N/A'}</td>
                   <td>{student.firstname || 'N/A'}</td>
                   <td>{student.lastname || 'N/A'}</td>
-                  <td>{student.course || 'N/A'}</td>
+                  <td>{student.course_name || student.course || 'N/A'}</td>
                   <td>{student.year || 'N/A'}</td>
                   <td>{student.gender || 'N/A'}</td>
                   <td>
-                    <button
-                      className="btn btn-warning btn-sm"
-                      onClick={() => openEditModal(student)}
-                      aria-label={`Edit student ${student.firstname} ${student.lastname}`}
-                      title="Edit student"
-                    >
-                      <FiEdit size={14} style={{ marginRight: '4px' }} />
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm ml-2"
-                      onClick={() => handleDelete(student.id)}
-                      aria-label={`Delete student ${student.firstname} ${student.lastname}`}
-                      title="Delete student"
-                    >
-                      <FiTrash2 size={14} style={{ marginRight: '4px' }} />
-                      Delete
-                    </button>
+                    <div className="action-buttons">
+                      <button
+                        className="btn btn-warning btn-sm"
+                        onClick={() => openEditModal(student)}
+                        aria-label={`Edit student ${student.firstname} ${student.lastname}`}
+                        title="Edit student"
+                      >
+                        <FiEdit size={14} aria-hidden="true" />
+                        Edit
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleDelete(student.id)}
+                        aria-label={`Delete student ${student.firstname} ${student.lastname}`}
+                        title="Delete student"
+                      >
+                        <FiTrash2 size={14} aria-hidden="true" />
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

@@ -10,6 +10,30 @@ const apiClient = axios.create({
   },
 });
 
+// Add request interceptor for debugging
+apiClient.interceptors.request.use(
+  (config) => {
+    console.log('API Request:', config.method?.toUpperCase(), config.url, config.data);
+    return config;
+  },
+  (error) => {
+    console.error('API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for debugging
+apiClient.interceptors.response.use(
+  (response) => {
+    console.log('API Response:', response.status, response.data);
+    return response;
+  },
+  (error) => {
+    console.error('API Response Error:', error.response?.status, error.response?.data);
+    return Promise.reject(error);
+  }
+);
+
 // This apiClient is specifically for the /auth routes, which have a different path
 const authApiClient = axios.create({
   baseURL: "http://localhost:5000", // Base URL without the /api prefix
@@ -18,6 +42,30 @@ const authApiClient = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+// Add request interceptor for auth debugging
+authApiClient.interceptors.request.use(
+  (config) => {
+    console.log('Auth API Request:', config.method?.toUpperCase(), config.url, config.data);
+    return config;
+  },
+  (error) => {
+    console.error('Auth API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for auth debugging
+authApiClient.interceptors.response.use(
+  (response) => {
+    console.log('Auth API Response:', response.status, response.data);
+    return response;
+  },
+  (error) => {
+    console.error('Auth API Response Error:', error.response?.status, error.response?.data);
+    return Promise.reject(error);
+  }
+);
 
 
 const api = {
@@ -99,10 +147,14 @@ const api = {
 
   // Students
   getStudents(params = {}) { return apiClient.get("/students", { params }); },
-  getStudent(id) { return apiClient.get(`/students/${id}`); },
+  getStudent(id) {
+    console.log(`🔍 API: Checking student existence for ID: ${id}`);
+    return apiClient.get(`/students/${id}`);
+  },
   createStudent(data) { return apiClient.post("/students", data); },
   updateStudent(id, data) { return apiClient.put(`/students/${id}`, data); },
   deleteStudent(id) { return apiClient.delete(`/students/${id}`); },
+  validateProgramCode(code) { return apiClient.get(`/students/validate-program/${code}`); },
 };
 
 export default api;

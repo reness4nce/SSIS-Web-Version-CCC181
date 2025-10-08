@@ -3,6 +3,7 @@ import api from "../services/api";
 import { showSuccessToast, showErrorToast } from "../utils/alert";
 
 function ProgramForm({ onSuccess, program, onClose }) {
+  const operation = program ? 'update' : 'create';
   const isEdit = !!program;
 
   const [formData, setFormData] = useState({ code: "", name: "", college: "" });
@@ -24,7 +25,12 @@ function ProgramForm({ onSuccess, program, onClose }) {
 
   useEffect(() => {
     if (isEdit && program) {
-      setFormData(program);
+      // Handle orphaned programs (college is null)
+      const safeProgram = {
+        ...program,
+        college: program.college || "" // Convert null to empty string for form
+      };
+      setFormData(safeProgram);
     } else {
       setFormData({ code: "", name: "", college: "" });
     }
@@ -45,15 +51,21 @@ function ProgramForm({ onSuccess, program, onClose }) {
     }
 
     try {
+      let response;
       if (isEdit) {
         // Use original program code in URL, updated data in body
-        await api.updateProgram(program.code, formData);
+        response = await api.updateProgram(program.code, formData);
         showSuccessToast("Program updated successfully!");
       } else {
-        await api.createProgram(formData);
+        response = await api.createProgram(formData);
         showSuccessToast("Program created successfully!");
       }
-      if (onSuccess) onSuccess();
+
+      // Pass the updated/created program data and operation type to the callback for in-place updates
+      if (onSuccess) {
+        const programData = response.data.program;
+        onSuccess(programData, operation);
+      }
     } catch (err) {
       console.error("Failed to save program:", err);
 
@@ -77,11 +89,28 @@ function ProgramForm({ onSuccess, program, onClose }) {
     }
   };
 
+  // Check if this is an orphaned program (college was deleted)
+  const isOrphaned = isEdit && program && !program.college;
+
   return (
     <form onSubmit={handleSubmit} className="modal-form">
       {errorMessage && (
         <div className="modal-error" role="alert">
           {errorMessage}
+        </div>
+      )}
+
+      {isOrphaned && (
+        <div className="modal-warning" role="alert" style={{
+          backgroundColor: '#fff3cd',
+          color: '#856404',
+          padding: '12px',
+          borderRadius: '4px',
+          marginBottom: '16px',
+          border: '1px solid #ffeaa7'
+        }}>
+          ⚠️ This program is currently not associated with any college.
+          Please select a college to continue.
         </div>
       )}
 
@@ -165,7 +194,11 @@ function ProgramForm({ onSuccess, program, onClose }) {
         <button
           type="submit"
           className="modal-btn modal-btn-primary"
-          disabled={!formData.code.trim() || !formData.name.trim() || !formData.college.trim()}
+          disabled={
+            !formData.code?.trim() ||
+            !formData.name?.trim() ||
+            !formData.college?.trim()
+          }
         >
           {isEdit ? "Update Program" : "Add Program"}
         </button>

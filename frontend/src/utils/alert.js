@@ -8,7 +8,7 @@ export const showSuccessToast = (message) => {
         icon: 'success',
         title: message,
         showConfirmButton: false,
-        timer: 3000,
+        timer: 1000,
         timerProgressBar: true,
     });
 };
@@ -21,7 +21,7 @@ export const showErrorToast = (message) => {
         icon: 'error',
         title: message,
         showConfirmButton: false,
-        timer: 3000,
+        timer: 1000,
         timerProgressBar: true,
     });
 };
@@ -34,7 +34,7 @@ export const showWarningToast = (message) => {
         icon: 'warning',
         title: message,
         showConfirmButton: false,
-        timer: 3000,
+        timer: 1000,
         timerProgressBar: true,
     });
 };
@@ -47,7 +47,7 @@ export const showInfoToast = (message) => {
         icon: 'info',
         title: message,
         showConfirmButton: false,
-        timer: 3000,
+        timer: 1000,
         timerProgressBar: true,
     });
 };

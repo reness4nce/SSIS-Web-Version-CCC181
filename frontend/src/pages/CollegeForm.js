@@ -3,6 +3,7 @@ import api from "../services/api";
 import { showSuccessToast, showErrorToast } from "../utils/alert";
 
 function CollegeForm({ onSuccess, college, onClose }) {
+  const operation = college ? 'update' : 'create';
   const isEdit = !!college;
 
   const [formData, setFormData] = useState({ code: "", name: "" });
@@ -31,15 +32,21 @@ function CollegeForm({ onSuccess, college, onClose }) {
     }
 
     try {
+      let response;
       if (isEdit) {
         // Use original college code in URL, updated data in body
-        await api.updateCollege(college.code, formData);
+        response = await api.updateCollege(college.code, formData);
         showSuccessToast("College updated successfully!");
       } else {
-        await api.createCollege(formData);
+        response = await api.createCollege(formData);
         showSuccessToast("College created successfully!");
       }
-      if (onSuccess) onSuccess();
+
+      // Pass the updated/created college data and operation type to the callback for in-place updates
+      if (onSuccess) {
+        const collegeData = response.data.college;
+        onSuccess(collegeData, operation);
+      }
     } catch (err) {
       console.error("Failed to save college:", err);
 

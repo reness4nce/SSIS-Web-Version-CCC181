@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { FiUsers, FiBookOpen, FiHome } from 'react-icons/fi';
 
+
 const Dashboard = () => {
   const [stats, setStats] = useState({
     total_students: 0,
@@ -16,20 +17,22 @@ const Dashboard = () => {
   const [error, setError] = useState('');
   const [isMobile, setIsMobile] = useState(false);
 
+
   useEffect(() => {
     fetchDashboardStats();
     fetchChartData();
 
-    // Handle responsive behavior
+    
     const handleResize = () => {
       setIsMobile(window.innerWidth <= 768);
     };
 
     window.addEventListener('resize', handleResize);
-    handleResize(); // Set initial state
+    handleResize();
 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
 
   const fetchDashboardStats = async () => {
     try {
@@ -45,6 +48,7 @@ const Dashboard = () => {
     }
   };
 
+
   const fetchChartData = async () => {
     try {
       const response = await api.getDashboardCharts();
@@ -54,20 +58,21 @@ const Dashboard = () => {
     }
   };
 
-  // Horizontal Bar Chart Component - Students by Program (Fixed Overflow)
+
+  // Horizontal Bar Chart Component - Expanded Version
   const HorizontalBarChart = ({ data }) => {
     const maxCount = Math.max(...data.map(item => item.student_count));
 
     return (
       <div style={{
-        height: '320px',
+        height: '450px', // Increased from 320px
         overflow: 'auto',
         boxSizing: 'border-box'
       }}>
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '16px',
+          gap: '20px', // Increased from 16px
           height: 'fit-content',
           minHeight: '100%'
         }}>
@@ -87,19 +92,19 @@ const Dashboard = () => {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px',
-                  height: '28px',
+                  height: '32px', // Increased from 28px
                   width: '100%',
                   boxSizing: 'border-box'
                 }}>
                   {/* Program Name - Left Aligned */}
                   <div style={{
-                    minWidth: '160px',
-                    maxWidth: '160px',
+                    minWidth: '200px', // Increased from 160px
+                    maxWidth: '200px',
                     flexShrink: 0,
                     boxSizing: 'border-box'
                   }}>
                     <div style={{
-                      fontSize: '11px',
+                      fontSize: '12px', // Increased from 11px
                       fontWeight: '500',
                       color: '#6B7280',
                       lineHeight: '1.3',
@@ -124,9 +129,9 @@ const Dashboard = () => {
                   }}>
                     <div style={{
                       flex: 1,
-                      height: '18px',
+                      height: '24px', 
                       backgroundColor: '#F3F4F6',
-                      borderRadius: '9px',
+                      borderRadius: '12px', 
                       overflow: 'hidden',
                       position: 'relative',
                       boxSizing: 'border-box'
@@ -135,7 +140,7 @@ const Dashboard = () => {
                         width: `${Math.max(width, 3)}%`,
                         height: '100%',
                         background: `linear-gradient(90deg, #3B82F6 0%, #2563EB 100%)`,
-                        borderRadius: '9px',
+                        borderRadius: '12px',
                         transition: 'width 0.3s ease',
                         position: 'relative',
                         boxSizing: 'border-box'
@@ -164,14 +169,14 @@ const Dashboard = () => {
 
                     {/* Student Count - Right Aligned */}
                     <div style={{
-                      minWidth: '30px',
-                      maxWidth: '40px',
+                      minWidth: '35px', 
+                      maxWidth: '45px',
                       textAlign: 'right',
                       flexShrink: 0,
                       boxSizing: 'border-box'
                     }}>
                       <div style={{
-                        fontSize: '11px',
+                        fontSize: '12px', 
                         fontWeight: '600',
                         color: '#111827',
                         fontFamily: 'Inter, sans-serif'
@@ -189,43 +194,41 @@ const Dashboard = () => {
     );
   };
 
-  // Pie Chart with Legend Component - Students by College (Fixed Overflow)
+
+  // Pie Chart with Legend Component - Expanded Version
   const PieChartWithLegend = ({ data }) => {
     const total = data.reduce((sum, item) => sum + item.student_count, 0);
     let currentAngle = 0;
 
-    // Much larger radius to fill the card
-    const radius = 85;
+    // Larger radius for expanded view
+    const radius = 110; // Increased from 85
 
-    // Color coding based on college codes (all unique colors)
+    // Color coding based on college codes
     const collegeColors = {
       'COE': '#DC2626',     // RED
       'CCS': '#1E40AF',     // DARK BLUE
       'CASS': '#059669',    // GREEN
       'CHS': '#0284C7',     // LIGHT BLUE
       'CEBA': '#D97706',    // ORANGE
-      'CSM': '#7C3AED'      // PURPLE (unique from COE's red)
+      'CSM': '#7C3AED'      // PURPLE
     };
 
     // Function to generate consistent random colors for unknown colleges
     const getRandomColor = (collegeCode) => {
-      // Use college code as seed for consistent color generation
       let hash = 0;
       for (let i = 0; i < collegeCode.length; i++) {
         const char = collegeCode.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32-bit integer
+        hash = hash & hash;
       }
 
-      // Generate HSL color with good saturation and lightness for visibility
       const hue = Math.abs(hash) % 360;
-      const saturation = 65 + (Math.abs(hash) % 20); // 65-85% saturation
-      const lightness = 45 + (Math.abs(hash >> 8) % 15); // 45-60% lightness
+      const saturation = 65 + (Math.abs(hash) % 20);
+      const lightness = 45 + (Math.abs(hash >> 8) % 15);
 
       return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
     };
 
-    // Get colors based on college codes with random colors for unknown colleges
     const colors = data.map(item => {
       const collegeCode = item.college_code || item.college_name?.substring(0, 4)?.toUpperCase() || 'DEFAULT';
       return collegeColors[collegeCode] || getRandomColor(collegeCode);
@@ -235,8 +238,8 @@ const Dashboard = () => {
       <div style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '320px',
-        gap: '16px',
+        height: '450px', // Increased from 320px
+        gap: '20px', // Increased from 16px
         width: '100%',
         boxSizing: 'border-box',
         overflow: 'auto'
@@ -246,19 +249,19 @@ const Dashboard = () => {
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          height: '260px',
+          height: '280px', // Increased from 260px
           width: '100%'
         }}>
           <div style={{
-            width: '220px',
-            height: '220px',
+            width: '280px', // Increased from 220px
+            height: '280px', // Increased from 220px
             position: 'relative',
             flexShrink: 0
           }}>
             <svg
-              width="220"
-              height="220"
-              viewBox="0 0 220 220"
+              width="280" // Increased from 220
+              height="280" // Increased from 220
+              viewBox="0 0 280 280" // Increased from 0 0 220 220
               style={{
                 overflow: 'visible',
                 maxWidth: '100%'
@@ -281,18 +284,18 @@ const Dashboard = () => {
 
                 // Position text at 70% of radius from center
                 const textRadius = radius * 0.7;
-                const textX = 110 + textRadius * Math.cos(midAngleRad);
-                const textY = 110 + textRadius * Math.sin(midAngleRad);
+                const textX = 140 + textRadius * Math.cos(midAngleRad); // Adjusted from 110
+                const textY = 140 + textRadius * Math.sin(midAngleRad); // Adjusted from 110
 
-                const x1 = 110 + radius * Math.cos(startAngleRad);
-                const y1 = 110 + radius * Math.sin(startAngleRad);
-                const x2 = 110 + radius * Math.cos(endAngleRad);
-                const y2 = 110 + radius * Math.sin(endAngleRad);
+                const x1 = 140 + radius * Math.cos(startAngleRad); // Adjusted from 110
+                const y1 = 140 + radius * Math.sin(startAngleRad); // Adjusted from 110
+                const x2 = 140 + radius * Math.cos(endAngleRad); // Adjusted from 110
+                const y2 = 140 + radius * Math.sin(endAngleRad); // Adjusted from 110
 
                 const largeArcFlag = angle > 180 ? 1 : 0;
 
                 const pathData = [
-                  `M 110 110`,
+                  `M 140 140`, // Adjusted from M 110 110
                   `L ${x1} ${y1}`,
                   `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
                   'Z'
@@ -305,7 +308,7 @@ const Dashboard = () => {
                       d={pathData}
                       fill={color}
                       stroke="#FFFFFF"
-                      strokeWidth="2"
+                      strokeWidth="3" // Increased from 2
                       style={{
                         cursor: 'pointer',
                         transition: 'opacity 0.2s ease',
@@ -313,12 +316,12 @@ const Dashboard = () => {
                       }}
                     />
                     {/* Percentage text on segment */}
-                    {percentage > 3 && ( // Show text if segment is larger than 3%
+                    {percentage > 3 && (
                       <text
                         x={textX}
                         y={textY}
                         fill="white"
-                        fontSize={percentage > 10 ? "12" : "10"}
+                        fontSize={percentage > 10 ? "14" : "12"} // Increased from 12/10
                         fontWeight="600"
                         textAnchor="middle"
                         dominantBaseline="central"
@@ -342,7 +345,7 @@ const Dashboard = () => {
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '6px',
+          gap: '8px', // Increased from 6px
           padding: '0 16px',
           flex: 1,
           overflow: 'visible'
@@ -389,7 +392,7 @@ const Dashboard = () => {
                     flex: 1,
                     minWidth: 0
                   }}>
-                    {item.college_name}
+                    {item.college_name} ({percentage}%)
                   </span>
                   <span style={{
                     fontSize: '11px',
@@ -409,6 +412,7 @@ const Dashboard = () => {
       </div>
     );
   };
+
 
   const StatCard = ({ title, value, icon: Icon, color }) => (
     <div className="stat-card" style={{
@@ -450,6 +454,7 @@ const Dashboard = () => {
     </div>
   );
 
+
   if (error) {
     return (
       <div style={{
@@ -474,6 +479,7 @@ const Dashboard = () => {
       </div>
     );
   }
+
 
   return (
     <div style={{
@@ -508,8 +514,8 @@ const Dashboard = () => {
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '24px',
-          marginBottom: '32px'
+          gap: '32px',
+          marginBottom: '40px'
         }}>
           <StatCard
             title="Total Students"
@@ -531,6 +537,13 @@ const Dashboard = () => {
           />
         </div>
 
+        {/* Section Divider */}
+        <div style={{
+          height: '1px',
+          backgroundColor: '#E5E7EB',
+          margin: '20px 0 32px 0'
+        }}></div>
+
         {/* Visual Data Section - Responsive Grid */}
         <div style={{
           display: 'grid',
@@ -544,9 +557,10 @@ const Dashboard = () => {
             gridColumn: 'span 6',
             backgroundColor: '#FFFFFF',
             borderRadius: '12px',
-            padding: isMobile ? '16px' : '20px',
+            padding: isMobile ? '16px' : '24px', 
             boxShadow: '0 2px 6px rgba(0, 0, 0, 0.05)',
             border: '1px solid #E5E7EB',
+            minHeight: '520px', 
             height: 'fit-content',
             transition: 'box-shadow 0.3s ease, transform 0.3s ease',
             cursor: 'default',
@@ -562,10 +576,10 @@ const Dashboard = () => {
             e.currentTarget.style.transform = 'translateY(0)';
           }}>
             <h3 style={{
-              fontSize: isMobile ? '16px' : '17px',
+              fontSize: isMobile ? '16px' : '18px', // Increased from 17px
               fontWeight: '600',
               color: '#111827',
-              margin: '0 0 16px 0',
+              margin: '0 0 20px 0', // Increased margin
               fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
             }}>
               Students by Program
@@ -588,9 +602,10 @@ const Dashboard = () => {
             gridColumn: 'span 6',
             backgroundColor: '#FFFFFF',
             borderRadius: '12px',
-            padding: isMobile ? '16px' : '20px',
+            padding: isMobile ? '16px' : '24px', 
             boxShadow: '0 2px 6px rgba(0, 0, 0, 0.05)',
             border: '1px solid #E5E7EB',
+            minHeight: '520px', 
             height: 'fit-content',
             transition: 'box-shadow 0.3s ease, transform 0.3s ease',
             cursor: 'default',
@@ -606,10 +621,10 @@ const Dashboard = () => {
             e.currentTarget.style.transform = 'translateY(0)';
           }}>
             <h3 style={{
-              fontSize: isMobile ? '16px' : '17px',
+              fontSize: isMobile ? '16px' : '18px', 
               fontWeight: '600',
               color: '#111827',
-              margin: '0 0 16px 0',
+              margin: '0 0 20px 0', 
               fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
             }}>
               Students by College
@@ -631,5 +646,6 @@ const Dashboard = () => {
     </div>
   );
 };
+
 
 export default Dashboard;

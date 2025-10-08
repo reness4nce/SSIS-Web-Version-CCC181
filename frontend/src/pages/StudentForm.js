@@ -3,6 +3,7 @@ import api from "../services/api"; // ✅ our API wrapper
 import { showSuccessToast, showErrorToast } from "../utils/alert";
 
 function StudentForm({ onSuccess, student, onClose }) {
+  const operation = student ? 'update' : 'create';
   const isEdit = !!student;
 
   const [formData, setFormData] = useState({
@@ -18,25 +19,87 @@ function StudentForm({ onSuccess, student, onClose }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
   const [isCheckingId, setIsCheckingId] = useState(false);
+  const [isValidatingProgram, setIsValidatingProgram] = useState(false);
+  const [programValidation, setProgramValidation] = useState({});
 
-  // ✅ Fetch available programs for the dropdown
+  // ✅ Fetch available programs for the dropdown with refresh capability
+  const fetchPrograms = async () => {
+    try {
+      const res = await api.getPrograms({ page: 1, per_page: 100 }); // Get all programs for dropdown
+      setPrograms(res.data.items || []);
+    } catch (err) {
+      console.error("Failed to fetch programs:", err);
+      setPrograms([]);
+    }
+  };
+
   useEffect(() => {
-    const fetchPrograms = async () => {
-      try {
-        const res = await api.getPrograms({ page: 1, per_page: 100 }); // Get all programs for dropdown
-        setPrograms(res.data.items || []);
-      } catch (err) {
-        console.error("Failed to fetch programs:", err);
-        setPrograms([]);
-      }
-    };
     fetchPrograms();
   }, []);
+
+  // ✅ Refresh programs when form becomes visible (for updates from other components)
+  useEffect(() => {
+    if (onSuccess) {
+      // This effect runs when the form is shown, ensuring fresh data
+      fetchPrograms();
+    }
+  }, [onSuccess]);
+
+  // ✅ Real-time program validation
+  useEffect(() => {
+    const shouldValidateProgram = formData.course && formData.course.trim();
+
+    if (shouldValidateProgram) {
+      setIsValidatingProgram(true);
+
+      const timeoutId = setTimeout(async () => {
+        try {
+          const validation = await api.validateProgramCode(formData.course.trim());
+          setProgramValidation(validation.data);
+
+          // Update field error based on validation result
+          if (!validation.data.valid) {
+            setFieldErrors(prev => ({
+              ...prev,
+              course: validation.data.message || "Invalid program code"
+            }));
+          } else {
+            // If valid, update form data to use the EXACT code from database
+            if (validation.data.program && validation.data.program.code) {
+              setFormData(prev => ({
+                ...prev,
+                course: validation.data.program.code // Use exact stored code
+              }));
+            }
+            setFieldErrors(prev => ({ ...prev, course: null }));
+          }
+        } catch (err) {
+          console.error("Program validation error:", err);
+          setProgramValidation({});
+          // Clear program error if validation fails (network issues, etc.)
+          setFieldErrors(prev => ({ ...prev, course: null }));
+        } finally {
+          setIsValidatingProgram(false);
+        }
+      }, 500); // Wait 500ms after user stops typing
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      setIsValidatingProgram(false);
+      setProgramValidation({});
+      setFieldErrors(prev => ({ ...prev, course: null }));
+    }
+  }, [formData.course]);
 
   // ✅ Populate form if editing
   useEffect(() => {
     if (isEdit && student) {
-      setFormData(student);
+      // Handle orphaned students (course is null)
+      const safeStudent = {
+        ...student,
+        course: student.course || "" // Convert null to empty string for form
+      };
+      setFormData(safeStudent);
     } else {
       setFormData({
         id: "",
@@ -63,10 +126,16 @@ function StudentForm({ onSuccess, student, onClose }) {
         try {
           console.log(`🔍 Checking ID: ${formData.id}, isEdit: ${isEdit}, original ID: ${student?.id}`);
 
-          // Check if ID exists
-          await api.getStudent(formData.id);
+          // Check if ID exists - use uppercase for consistency
+          const checkId = formData.id.toUpperCase();
+          console.log(`🔍 Making API call for ID: ${checkId}`);
 
-          // If we reach here, the ID exists - but we need to handle edit case differently
+          // Check if ID exists
+          await api.getStudent(checkId);
+
+          // If we reach here, the ID exists (200 response)
+          console.log(`✅ API returned 200 - ID exists in database`);
+
           if (isEdit && student && formData.id === student.id) {
             // This is the current student's ID - it's valid
             console.log(`✅ Current student's ID - valid`);
@@ -80,13 +149,25 @@ function StudentForm({ onSuccess, student, onClose }) {
             }));
           }
         } catch (err) {
-          // If we get a 404, the ID is available
+          console.log(`🔍 API call failed with status: ${err.response?.status}, error:`, err.message);
+
+          // If we get a 404, the ID is available (this is what we expect for new IDs)
           if (err.response?.status === 404) {
-            console.log(`✅ ID available (404 received)`);
+            console.log(`✅ ID available (404 received) - this is expected for new IDs`);
             setFieldErrors(prev => ({ ...prev, id: null }));
+          } else if (err.response?.status === 500) {
+            console.log(`⚠️ Server error (500) - database issue?`);
+            // For server errors, don't set an error - let form submission handle it
+            setFieldErrors(prev => ({ ...prev, id: null }));
+          } else if (err.response?.status === 400) {
+            console.log(`⚠️ Bad request (400) - ID format issue?`);
+            setFieldErrors(prev => ({
+              ...prev,
+              id: "Invalid ID format. Please check the format (YYYY-NNNN)."
+            }));
           } else {
-            // For other errors (network, server, etc.), clear any existing ID error
-            // The form submission will handle these errors
+            // For other errors (network, timeout, etc.), clear any existing ID error
+            // The form submission will handle these errors properly
             console.log(`⚠️ Other error during ID check:`, err.response?.status, err.message);
             setFieldErrors(prev => ({ ...prev, id: null }));
           }
@@ -122,9 +203,9 @@ function StudentForm({ onSuccess, student, onClose }) {
       errors.id = "Student ID must include a dash (e.g., 2024-0001)";
     } else if (!/^[0-9]{4}-[0-9]{4}$/.test(formData.id)) {
       errors.id = "Student ID must follow format YYYY-NNNN (e.g., 2024-0001)";
-    } else if (isEdit && student && formData.id !== student.id) {
-      // For editing: if ID is different from original, check for duplicates
-      // The real-time validation should catch this, but this is a backup
+    } else if (isEdit && student && formData.id !== student.id && fieldErrors.id) {
+      // For editing: if ID is different from original AND real-time validation found an issue
+      // Only show this error if real-time validation actually detected a problem
       errors.id = "Please ensure the Student ID is unique before submitting.";
     }
 
@@ -183,20 +264,29 @@ function StudentForm({ onSuccess, student, onClose }) {
 
     // Additional check: if editing and ID changed, ensure no duplicate ID error exists
     if (isEdit && student && formData.id !== student.id && fieldErrors.id) {
+      console.log(`❌ Form submission blocked: ID validation error exists for ${formData.id}`);
       showErrorToast("Please fix the Student ID error before submitting.");
       return;
+    } else if (isEdit && student && formData.id !== student.id) {
+      console.log(`✅ Form submission allowed: No ID validation errors for ${formData.id}`);
     }
 
     try {
+      let response;
       if (isEdit) {
         // Use original student ID in URL, updated data in body
-        await api.updateStudent(student.id, formData);
+        response = await api.updateStudent(student.id, formData);
         showSuccessToast("Student updated successfully!");
       } else {
-        await api.createStudent(formData);
+        response = await api.createStudent(formData);
         showSuccessToast("Student created successfully!");
       }
-      if (onSuccess) onSuccess();
+
+      // Pass the updated/created student data and operation type to the callback for in-place updates
+      if (onSuccess) {
+        const studentData = response.data.student;
+        onSuccess(studentData, operation);
+      }
     } catch (err) {
       console.error("Failed to save student:", err);
       console.log("Error response:", err.response?.data); // Debug logging
@@ -262,11 +352,28 @@ function StudentForm({ onSuccess, student, onClose }) {
     }
   };
 
+  // Check if this is an orphaned student (course/program was deleted)
+  const isOrphaned = isEdit && student && !student.course;
+
   return (
     <form onSubmit={handleSubmit} className="modal-form">
       {errorMessage && (
         <div className="modal-error" role="alert">
           {errorMessage}
+        </div>
+      )}
+
+      {isOrphaned && (
+        <div className="modal-warning" role="alert" style={{
+          backgroundColor: '#fff3cd',
+          color: '#856404',
+          padding: '12px',
+          borderRadius: '4px',
+          marginBottom: '16px',
+          border: '1px solid #ffeaa7'
+        }}>
+          ⚠️ This student is currently not enrolled in any program.
+          Please select a program to continue.
         </div>
       )}
 
@@ -364,7 +471,7 @@ function StudentForm({ onSuccess, student, onClose }) {
           <option value="">Select a program</option>
           {programs.map((program) => (
             <option key={program.code} value={program.code}>
-              {program.name}
+              {program.name} ({program.code})
             </option>
           ))}
         </select>
@@ -437,8 +544,8 @@ function StudentForm({ onSuccess, student, onClose }) {
         <button
           type="submit"
           className="modal-btn modal-btn-primary"
-          disabled={!formData.id.trim() || !formData.firstname.trim() || !formData.lastname.trim() ||
-                   !formData.course.trim() || !formData.year || !formData.gender}
+          disabled={!formData.id?.trim() || !formData.firstname?.trim() || !formData.lastname?.trim() ||
+                   !formData.course?.trim() || !formData.year || !formData.gender}
         >
           {isEdit ? "Update Student" : "Add Student"}
         </button>

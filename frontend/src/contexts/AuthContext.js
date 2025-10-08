@@ -10,9 +10,9 @@ export const useAuth = () => useContext(AuthContext);
 // Create the provider component
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  // Check authentication status on app load
+  // Check authentication status on app load (completely invisible)
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -20,27 +20,33 @@ export const AuthProvider = ({ children }) => {
         if (response.data.isAuthenticated) {
           setCurrentUser(response.data.user);
         }
+        // If not authenticated, currentUser stays null
       } catch (error) {
-        console.log('Not authenticated or server not available');
+        // Silently handle auth check failure - don't affect UI
+        console.log('Auth check failed silently');
       } finally {
-        setIsLoading(false);
+        setAuthChecked(true);
       }
     };
 
+    // Run auth check completely in background
     checkAuth();
   }, []);
 
   // Real login function using the API service
   const login = async (username, password) => {
     try {
-      setIsLoading(true);
+      console.log('AuthContext: Making login API call');
       const response = await api.login(username, password);
+      console.log('AuthContext: Login API response received:', response);
 
       // Set the current user from the response
-      setCurrentUser(response.data.user);
-      return response.data.user;
+      const userData = response.data.user;
+      setCurrentUser(userData);
+      console.log('AuthContext: User state updated:', userData);
+      return userData;
     } catch (error) {
-      setIsLoading(false);
+      console.error('AuthContext: Login error occurred:', error);
       throw error; // Re-throw to let the component handle the error
     }
   };
@@ -60,7 +66,7 @@ export const AuthProvider = ({ children }) => {
   // The value provided to consuming components
   const value = {
     currentUser,
-    isLoading,
+    authChecked,
     login,
     logout,
   };

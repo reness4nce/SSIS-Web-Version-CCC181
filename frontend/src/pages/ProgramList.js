@@ -16,7 +16,9 @@ const ProgramList = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState(null);
+  const [originalEditingCode, setOriginalEditingCode] = useState(null); // For tracking code changes in edit
   const [hasSearched, setHasSearched] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   const [debouncedSearch] = useDebounce(searchParams.search, 300);
   const [debouncedFilter] = useDebounce(searchParams.filter, 300);
@@ -38,7 +40,7 @@ const ProgramList = () => {
       showErrorToast('Error fetching programs.');
       console.error("Error fetching programs:", error);
     }
-  }, [currentPage, debouncedSearch, debouncedFilter, sortParams]);
+  }, [currentPage, debouncedSearch, debouncedFilter, sortParams.sort, sortParams.order]);
 
   useEffect(() => {
     fetchPrograms();
@@ -60,63 +62,41 @@ const ProgramList = () => {
   };
 
   const handleDelete = async (code) => {
-    try {
-      // First, get the program details to check for dependencies
-      const programResponse = await api.getProgram(code);
-      const program = programResponse.data;
+    const result = await showConfirmDialog({
+      title: 'Delete Program',
+      text: 'This program will be permanently deleted. Students enrolled in this program will show "N/A" for their course. Are you sure?',
+      confirmButtonText: 'Delete Program'
+    });
 
-      // Check if program has enrolled students
-      if (program.year_distribution && program.year_distribution.length > 0) {
-        const totalStudents = program.year_distribution.reduce((sum, year) => sum + year.count, 0);
-
-        const warningMessage = `This program has ${totalStudents} enrolled student${totalStudents !== 1 ? 's' : ''} across ${program.year_distribution.length} year level${program.year_distribution.length !== 1 ? 's' : ''}. Deleting this program will affect all enrolled students. Are you sure you want to proceed?`;
-
-        const result = await showConfirmDialog({
-          title: 'Cannot Delete Program',
-          text: warningMessage,
-          confirmButtonText: 'I Understand, Delete Anyway',
-          confirmButtonColor: '#d33',
-          showCancelButton: true
-        });
-
-        if (!result.isConfirmed) {
-          return;
-        }
-      } else {
-        // No enrolled students, show standard confirmation
-        const result = await showConfirmDialog({
-          title: 'Delete Program',
-          text: 'This program will be permanently deleted. Are you sure?',
-          confirmButtonText: 'Delete Program'
-        });
-
-        if (!result.isConfirmed) {
-          return;
-        }
+    if (result.isConfirmed) {
+      try {
+        await api.deleteProgram(code);
+        showSuccessToast('Program deleted successfully!');
+        fetchPrograms();
+      } catch (error) {
+        showErrorToast(error.response?.data?.error || 'Error deleting program.');
       }
-
-      // Attempt deletion
-      await api.deleteProgram(code);
-      showSuccessToast('Program deleted successfully!');
-      fetchPrograms();
-    } catch (error) {
-      if (error.response?.status === 400) {
-        // Backend validation error - show the specific error message
-        showErrorToast(error.response.data.error || 'Cannot delete program due to existing dependencies.');
-      } else {
-        showErrorToast('Error deleting program. Please try again.');
-      }
-      console.error('Error deleting program:', error);
     }
   };
 
-  const handleFormSuccess = () => {
-    // Reset to first page and refresh data immediately
-    setCurrentPage(1);
-    setSearchParams({ search: '', filter: 'all' });
-    setHasSearched(false);
-    // Force immediate refresh
-    fetchPrograms();
+  const handleFormSuccess = (programData, operation) => {
+    if (operation === 'update' && programData && originalEditingCode) {
+      // For updates, replace the program in the current list
+      // This preserves pagination, search, and filter state
+      setPrograms(prev =>
+        prev.map(program =>
+          program.code === originalEditingCode ? programData : program
+        )
+      );
+    } else if (operation === 'create' && programData) {
+      // For new programs, refresh to show the new record
+      // (it might be on a different page or filtered out)
+      fetchPrograms();
+    } else {
+      // Fallback: refresh data
+      fetchPrograms();
+    }
+
     // Close modal after a brief delay to allow state to update
     setTimeout(() => {
       closeModal();
@@ -125,6 +105,9 @@ const ProgramList = () => {
 
   const openAddModal = () => { setEditingProgram(null); setIsModalOpen(true); };
   const openEditModal = async (program) => {
+    // Save the original code for handling any code changes
+    setOriginalEditingCode(program.code);
+
     // Always fetch fresh data when opening edit modal to ensure we have latest changes
     try {
       const response = await api.getProgram(program.code);
@@ -138,7 +121,11 @@ const ProgramList = () => {
       setIsModalOpen(true);
     }
   };
-  const closeModal = () => { setIsModalOpen(false); setEditingProgram(null); };
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingProgram(null);
+    setOriginalEditingCode(null);
+  };
 
   const renderSortArrow = (field) => {
     if (sortParams.sort === field) {
@@ -164,68 +151,49 @@ const ProgramList = () => {
     <div className="main-header">
         <h1 className="header-title">Programs</h1>
         <div className="header-actions" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <div className="search-bar" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: 380 }}>
-            
-            {/* Filter Dropdown with Custom Icon */}
-            <div style={{ position: 'relative', width: 130 }}>
-              <select
-                name="filter"
-                value={searchParams.filter}
-                onChange={handleSearchChange}
-                className="form-control"
-                style={{
-                  width: '100%',
-                  appearance: 'none',
-                  WebkitAppearance: 'none',
-                  MozAppearance: 'none',
-                  paddingRight: '2em',
-                  background: 'none'
-                }}
-              >
-                <option value="all">All Fields</option>
-                <option value="code">Program Code</option>
-                <option value="name">Program Name</option>
-                <option value="college">College</option>
-              </select>
-              <span style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                pointerEvents: 'none',
-                color: '#aaa',
-                zIndex: 2,
-              }}>
-                <FiChevronDown size={19} />
-              </span>
+          <div className="search-container" style={{ width: 380 }}>
+            <div className={`search-input-container ${isSearching ? 'searching' : ''}`}>
+              {/* Filter Dropdown with enhanced accessibility */}
+              <div className={`filter-dropdown ${searchParams.filter !== 'all' ? 'filter-active' : ''}`}>
+                <select
+                  name="filter"
+                  value={searchParams.filter}
+                  onChange={handleSearchChange}
+                  className="form-control"
+                  aria-label="Search field filter"
+                >
+                  <option value="all">Search all fields</option>
+                  <option value="code">Search by Program Code</option>
+                  <option value="name">Search by Program Name</option>
+                  <option value="college">Search by College</option>
+                </select>
+                <FiChevronDown className="dropdown-icon" aria-hidden="true" />
+              </div>
+
+              {/* Enhanced Search Input */}
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  type="text"
+                  className="form-control search-input"
+                  name="search"
+                  placeholder="Search programs..."
+                  value={searchParams.search}
+                  onChange={(e) => {
+                    handleSearchChange(e);
+                    setIsSearching(true);
+                    // Reset searching state after debounce delay
+                    setTimeout(() => setIsSearching(false), 350);
+                  }}
+                  aria-label={`Search programs by ${searchParams.filter}`}
+                  autoComplete="off"
+                  style={{ paddingRight: '3rem' }}
+                />
+                <FiSearch className="search-icon" aria-hidden="true" />
+                <div className="search-spinner" aria-hidden="true"></div>
+              </div>
             </div>
 
-            {/* Search Input with Icon */}
-            <div style={{ position: 'relative', flex: 1 }}>
-              <input
-                type="text"
-                className="form-control search-input"
-                name="search"
-                placeholder={`Search by ${searchParams.filter === 'all' ? 'All Fields' : searchParams.filter.replace(/^\w/, (c) => c.toUpperCase())}`}
-                value={searchParams.search}
-                onChange={handleSearchChange}
-                aria-label={`Search students by ${searchParams.filter}`}
-                autoComplete="on"
-                style={{ paddingRight: '2.5rem', width: '100%' }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  right: 10,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  pointerEvents: 'none',
-                  color: '#aaa',
-                }}
-              >
-                <FiSearch size={18} />
-              </span>
-            </div>
+
           </div>
 
           <button className="btn add-btn" onClick={openAddModal}>
@@ -238,7 +206,7 @@ const ProgramList = () => {
         <table>
           <thead>
             <tr>
-              <th onClick={() => handleSort('code')} style={getSortButtonStyle('code')}>
+              <th className="col-code" onClick={() => handleSort('code')} style={getSortButtonStyle('code')}>
                 Code {renderSortArrow('code')}
                 {sortParams.sort === 'code' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -246,7 +214,7 @@ const ProgramList = () => {
                   </span>
                 )}
               </th>
-              <th onClick={() => handleSort('name')} style={getSortButtonStyle('name')}>
+              <th className="col-program-name" onClick={() => handleSort('name')} style={getSortButtonStyle('name')}>
                 Name {renderSortArrow('name')}
                 {sortParams.sort === 'name' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -254,7 +222,7 @@ const ProgramList = () => {
                   </span>
                 )}
               </th>
-              <th onClick={() => handleSort('college')} style={getSortButtonStyle('college')}>
+              <th className="college-name" onClick={() => handleSort('college')} style={getSortButtonStyle('college')}>
                 College {renderSortArrow('college')}
                 {sortParams.sort === 'college' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -262,7 +230,7 @@ const ProgramList = () => {
                   </span>
                 )}
               </th>
-              <th>Actions</th>
+              <th className="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -270,27 +238,37 @@ const ProgramList = () => {
               programs.map((program) => (
                 <tr key={program.code}>
                   <td>{program.code || 'N/A'}</td>
-                  <td>{program.name || 'N/A'}</td>
-                  <td>{program.college || 'N/A'}</td>
                   <td>
-                    <button
-                      className="btn btn-warning btn-sm"
-                      onClick={() => openEditModal(program)}
-                      aria-label={`Edit program ${program.name}`}
-                      title="Edit program"
-                    >
-                      <FiEdit size={14} style={{ marginRight: '4px' }} />
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm ml-2"
-                      onClick={() => handleDelete(program.code)}
-                      aria-label={`Delete program ${program.name}`}
-                      title="Delete program"
-                    >
-                      <FiTrash2 size={14} style={{ marginRight: '4px' }} />
-                      Delete
-                    </button>
+                    <div className="program-name" title={program.name}>
+                      {program.name || 'N/A'}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="college-name text-truncate" title={program.college || program.college_name}>
+                      {program.college || program.college_name || 'N/A'}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="action-buttons">
+                      <button
+                        className="btn btn-warning btn-sm"
+                        onClick={() => openEditModal(program)}
+                        aria-label={`Edit program ${program.name}`}
+                        title="Edit program"
+                      >
+                        <FiEdit size={14} aria-hidden="true" />
+                        Edit
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleDelete(program.code)}
+                        aria-label={`Delete program ${program.name}`}
+                        title="Delete program"
+                      >
+                        <FiTrash2 size={14} aria-hidden="true" />
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

@@ -16,7 +16,9 @@ const CollegeList = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCollege, setEditingCollege] = useState(null);
+  const [originalEditingCode, setOriginalEditingCode] = useState(null); // For tracking code changes in edit
   const [hasSearched, setHasSearched] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   const [debouncedSearch] = useDebounce(searchParams.search, 300);
   const [debouncedFilter] = useDebounce(searchParams.filter, 300);
@@ -38,7 +40,7 @@ const CollegeList = () => {
       showErrorToast('Error fetching colleges.');
       console.error("Error fetching colleges:", error);
     }
-  }, [currentPage, debouncedSearch, debouncedFilter, sortParams]);
+  }, [currentPage, debouncedSearch, debouncedFilter, sortParams.sort, sortParams.order]);
 
   useEffect(() => {
     fetchColleges();
@@ -111,13 +113,24 @@ const CollegeList = () => {
     }
   };
 
-  const handleFormSuccess = () => {
-    // Reset to first page and refresh data immediately
-    setCurrentPage(1);
-    setSearchParams({ search: '', filter: 'all' });
-    setHasSearched(false);
-    // Force immediate refresh
-    fetchColleges();
+  const handleFormSuccess = (collegeData, operation) => {
+    if (operation === 'update' && collegeData && originalEditingCode) {
+      // For updates, replace the college in the current list
+      // This preserves pagination, search, and filter state
+      setColleges(prev =>
+        prev.map(college =>
+          college.code === originalEditingCode ? collegeData : college
+        )
+      );
+    } else if (operation === 'create' && collegeData) {
+      // For new colleges, refresh to show the new record
+      // (it might be on a different page or filtered out)
+      fetchColleges();
+    } else {
+      // Fallback: refresh data
+      fetchColleges();
+    }
+
     // Close modal after a brief delay to allow state to update
     setTimeout(() => {
       closeModal();
@@ -126,6 +139,9 @@ const CollegeList = () => {
 
   const openAddModal = () => { setEditingCollege(null); setIsModalOpen(true); };
   const openEditModal = async (college) => {
+    // Save the original code for handling any code changes
+    setOriginalEditingCode(college.code);
+
     // Always fetch fresh data when opening edit modal to ensure we have latest changes
     try {
       const response = await api.getCollege(college.code);
@@ -139,7 +155,11 @@ const CollegeList = () => {
       setIsModalOpen(true);
     }
   };
-  const closeModal = () => { setIsModalOpen(false); setEditingCollege(null); };
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingCollege(null);
+    setOriginalEditingCode(null);
+  };
 
   const renderSortArrow = (field) => {
     if (sortParams.sort === field) {
@@ -165,67 +185,48 @@ const CollegeList = () => {
       <div className="main-header">
         <h1 className="header-title">Colleges</h1>
         <div className="header-actions" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <div className="search-bar" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: 380 }}>
-              
-  {/* Filter Dropdown with Custom Icon */}
-            <div style={{ position: 'relative', width: 130 }}>
-              <select
-                name="filter"
-                value={searchParams.filter}
-                onChange={handleSearchChange}
-                className="form-control"
-                style={{
-                  width: '100%',
-                  appearance: 'none',
-                  WebkitAppearance: 'none',
-                  MozAppearance: 'none',
-                  paddingRight: '2em',
-                  background: 'none'
-                }}
-              >
-                <option value="all">All Fields</option>
-                <option value="code">College Code</option>
-                <option value="name">College Name</option>
-              </select>
-              <span style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                pointerEvents: 'none',
-                color: '#aaa',
-                zIndex: 2,
-              }}>
-                <FiChevronDown size={19} />
-              </span>
+          <div className="search-container" style={{ width: 380 }}>
+            <div className={`search-input-container ${isSearching ? 'searching' : ''}`}>
+              {/* Filter Dropdown with enhanced accessibility */}
+              <div className={`filter-dropdown ${searchParams.filter !== 'all' ? 'filter-active' : ''}`}>
+                <select
+                  name="filter"
+                  value={searchParams.filter}
+                  onChange={handleSearchChange}
+                  className="form-control"
+                  aria-label="Search field filter"
+                >
+                  <option value="all">Search all fields</option>
+                  <option value="code">Search by College Code</option>
+                  <option value="name">Search by College Name</option>
+                </select>
+                <FiChevronDown className="dropdown-icon" aria-hidden="true" />
+              </div>
+
+              {/* Enhanced Search Input */}
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  type="text"
+                  className="form-control search-input"
+                  name="search"
+                  placeholder="Search colleges..."
+                  value={searchParams.search}
+                  onChange={(e) => {
+                    handleSearchChange(e);
+                    setIsSearching(true);
+                    // Reset searching state after debounce delay
+                    setTimeout(() => setIsSearching(false), 350);
+                  }}
+                  aria-label={`Search colleges by ${searchParams.filter}`}
+                  autoComplete="off"
+                  style={{ paddingRight: '3rem' }}
+                />
+                <FiSearch className="search-icon" aria-hidden="true" />
+                <div className="search-spinner" aria-hidden="true"></div>
+              </div>
             </div>
 
-            {/* Search Input with Icon */}
-            <div style={{ position: 'relative', flex: 1 }}>
-              <input
-                type="text"
-                className="form-control search-input"
-                name="search"
-                placeholder={`Search by ${searchParams.filter === 'all' ? 'All Fields' : searchParams.filter.replace(/^\w/, (c) => c.toUpperCase())}`}
-                value={searchParams.search}
-                onChange={handleSearchChange}
-                aria-label={`Search students by ${searchParams.filter}`}
-                autoComplete="on"
-                style={{ paddingRight: '2.5rem', width: '100%' }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  right: 10,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  pointerEvents: 'none',
-                  color: '#aaa',
-                }}
-              >
-                <FiSearch size={18} />
-              </span>
-            </div>
+
           </div>
 
           <button className="btn add-btn" onClick={openAddModal}>
@@ -237,7 +238,7 @@ const CollegeList = () => {
         <table>
           <thead>
             <tr>
-              <th onClick={() => handleSort('code')} style={getSortButtonStyle('code')}>
+              <th className="col-code" onClick={() => handleSort('code')} style={getSortButtonStyle('code')}>
                 Code {renderSortArrow('code')}
                 {sortParams.sort === 'code' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -245,7 +246,7 @@ const CollegeList = () => {
                   </span>
                 )}
               </th>
-              <th onClick={() => handleSort('name')} style={getSortButtonStyle('name')}>
+              <th className="col-name" onClick={() => handleSort('name')} style={getSortButtonStyle('name')}>
                 Name {renderSortArrow('name')}
                 {sortParams.sort === 'name' && (
                   <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
@@ -253,7 +254,7 @@ const CollegeList = () => {
                   </span>
                 )}
               </th>
-              <th>Actions</th>
+              <th className="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -263,24 +264,26 @@ const CollegeList = () => {
                   <td>{college.code || 'N/A'}</td>
                   <td>{college.name || 'N/A'}</td>
                   <td>
-                    <button
-                      className="btn btn-warning btn-sm"
-                      onClick={() => openEditModal(college)}
-                      aria-label={`Edit college ${college.name}`}
-                      title="Edit college"
-                    >
-                      <FiEdit size={14} style={{ marginRight: '4px' }} />
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm ml-2"
-                      onClick={() => handleDelete(college.code)}
-                      aria-label={`Delete college ${college.name}`}
-                      title="Delete college"
-                    >
-                      <FiTrash2 size={14} style={{ marginRight: '4px' }} />
-                      Delete
-                    </button>
+                    <div className="action-buttons">
+                      <button
+                        className="btn btn-warning btn-sm"
+                        onClick={() => openEditModal(college)}
+                        aria-label={`Edit college ${college.name}`}
+                        title="Edit college"
+                      >
+                        <FiEdit size={14} aria-hidden="true" />
+                        Edit
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleDelete(college.code)}
+                        aria-label={`Delete college ${college.name}`}
+                        title="Delete college"
+                      >
+                        <FiTrash2 size={14} aria-hidden="true" />
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

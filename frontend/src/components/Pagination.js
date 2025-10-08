@@ -44,7 +44,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems = 0, ite
         <span className="current-page">{startItem}-{endItem}</span>
         <span> of </span>
         <span>{totalItems}</span>
-        <span> entries </span>
+        <span> entries</span>
       </div>
 
       {/* Pagination Controls */}
