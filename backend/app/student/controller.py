@@ -1,17 +1,18 @@
 from flask import Blueprint, request, jsonify
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from db import (
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from ..database import (
     get_all, get_one, insert_record, update_record, delete_record,
     count_records, execute_raw_sql, paginate_query
 )
+from .models import Student
 import re
 
 student_bp = Blueprint("student", __name__, url_prefix="/api/students")
 
 def validate_student_data(data, student_id=None):
-    """Validate student data"""
+    """Validate student data with live program data"""
     errors = []
 
     required_fields = ["id", "firstname", "lastname", "course", "year", "gender"]
@@ -21,12 +22,21 @@ def validate_student_data(data, student_id=None):
 
     if "id" in data and data["id"]:
         sid = data["id"].upper()
+        print(f"🔍 Backend validation: Checking ID format for: {sid}")
+
         if not re.match(r"^[0-9]{4}-[0-9]{4}$", sid):
+            print(f"❌ Backend validation: Invalid format for ID: {sid}")
             errors.append("Student ID must follow format YYYY-NNNN (e.g., 2024-0001)")
+        else:
+            print(f"✅ Backend validation: Valid format for ID: {sid}")
+
         # Check if student ID already exists using raw SQL
         existing = get_one("student", where_clause="id = %s", params=[sid])
         if existing and (not student_id or existing["id"] != student_id):
+            print(f"❌ Backend validation: ID {sid} already exists")
             errors.append("Student ID already exists")
+        else:
+            print(f"✅ Backend validation: ID {sid} is available")
 
     if "year" in data and data["year"]:
         try:
@@ -42,10 +52,16 @@ def validate_student_data(data, student_id=None):
             errors.append("Gender must be Male, Female, Non-binary, Prefer not to say, or Other")
 
     if "course" in data and data["course"]:
-        # Check if program exists using raw SQL
-        course = get_one("program", where_clause="code = %s", params=[data["course"].upper()])
+        # Check if program exists using case-insensitive raw SQL with live data
+        course = get_one("program", where_clause="UPPER(code) = %s", params=[data["course"].upper()])
         if not course:
-            errors.append("Invalid program code")
+            # Provide helpful error message with available programs
+            available_programs = get_all("program", columns="code, name")
+            program_codes = [p["code"] for p in available_programs] if available_programs else []
+            if program_codes:
+                errors.append(f"Invalid program code '{data['course']}'. Available programs: {', '.join(program_codes[:5])}{'...' if len(program_codes) > 5 else ''}")
+            else:
+                errors.append("Invalid program code and no programs are currently available")
 
     return errors
 
@@ -124,14 +140,19 @@ def get_students():
 def get_student(student_id):
     """Get a specific student by ID"""
     try:
+        print(f"🔍 Backend: Checking student existence for ID: {student_id}")
+
         # Get student using raw SQL
         student = get_one("student", where_clause="id = %s", params=[student_id.upper()])
 
         if not student:
+            print(f"❌ Backend: Student {student_id} not found - returning 404")
             return jsonify({"error": "Student not found"}), 404
 
+        print(f"✅ Backend: Student {student_id} found - returning 200")
         return jsonify(student), 200
     except Exception as e:
+        print(f"❌ Backend: Error checking student {student_id}: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -147,12 +168,15 @@ def create_student():
         if errors:
             return jsonify({"errors": errors}), 400
 
-        # Insert student using raw SQL
+        # Get the EXACT program code as stored in database (not uppercase conversion)
+        actual_program = get_one("program", where_clause="UPPER(code) = %s", params=[data["course"].upper()])
+
+        # Insert student using raw SQL with exact program code
         student_data = {
             'id': data["id"].upper().strip(),
             'firstname': data["firstname"].strip(),
             'lastname': data["lastname"].strip(),
-            'course': data["course"].upper().strip(),
+            'course': actual_program["code"] if actual_program else data["course"].strip(),  # Use exact stored code
             'year': int(data["year"]),
             'gender': data["gender"].capitalize()
         }
@@ -185,34 +209,39 @@ def update_student(student_id):
         if errors:
             return jsonify({"errors": errors}), 400
 
-        # Update student using raw SQL
-        update_data = {
-            'firstname': data.get("firstname", student['firstname']).strip(),
-            'lastname': data.get("lastname", student['lastname']).strip(),
-            'course': data.get("course", student['course']).upper().strip(),
-            'year': int(data.get("year", student['year'])),
-            'gender': data.get("gender", student['gender']).capitalize()
-        }
+        # Update student using raw SQL with exact program code
+        update_data = {}
+        if "id" in data:
+            update_data['id'] = data["id"].upper().strip()
+        if "firstname" in data:
+            update_data['firstname'] = data["firstname"].strip()
+        if "lastname" in data:
+            update_data['lastname'] = data["lastname"].strip()
+        if "course" in data:
+            # Get the EXACT program code as stored in database
+            actual_program = get_one("program", where_clause="UPPER(code) = %s", params=[data["course"].upper()])
+            update_data['course'] = actual_program["code"] if actual_program else data["course"].strip()
+        if "year" in data:
+            update_data['year'] = int(data["year"])
+        if "gender" in data:
+            update_data['gender'] = data["gender"].capitalize()
+
+        if not update_data:
+            return jsonify({"error": "No fields to update"}), 400
 
         rows_updated = update_record(
             "student",
             update_data,
             "id = %s",
-            params={
-                'firstname': update_data['firstname'],
-                'lastname': update_data['lastname'],
-                'course': update_data['course'],
-                'year': update_data['year'],
-                'gender': update_data['gender'],
-                'id': student_id.upper()
-            }
+            params=[student_id.upper()]  # WHERE parameter only
         )
 
         if rows_updated == 0:
-            return jsonify({"error": "Student not found"}), 404
+            return jsonify({"error": "Student not found or no changes made"}), 404
 
-        # Get updated student
-        updated_student = get_one("student", where_clause="id = %s", params=[student_id.upper()])
+        # Get updated student - use new ID if it was changed
+        updated_student_id = update_data.get('id', student_id.upper())
+        updated_student = get_one("student", where_clause="id = %s", params=[updated_student_id])
 
         return jsonify({
             "message": "Student updated successfully",
@@ -239,6 +268,77 @@ def delete_student(student_id):
             return jsonify({"error": "Student not found"}), 404
 
         return jsonify({"message": "Student deleted successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@student_bp.route("/debug-id/<student_id>", methods=["GET"])
+def debug_student_id(student_id):
+    """Debug endpoint to check student ID existence"""
+    try:
+        print(f"🔍 Debug: Checking student ID: {student_id}")
+
+        # Check with original case
+        student_original = get_one("student", where_clause="id = %s", params=[student_id])
+        print(f"🔍 Debug: Original case check result: {student_original}")
+
+        # Check with uppercase
+        student_upper = get_one("student", where_clause="id = %s", params=[student_id.upper()])
+        print(f"🔍 Debug: Uppercase check result: {student_upper}")
+
+        # Test the specific case mentioned by user
+        test_cases = [
+            student_id,
+            student_id.upper(),
+            student_id.lower()
+        ]
+
+        results = {}
+        for test_id in test_cases:
+            exists = get_one("student", where_clause="id = %s", params=[test_id])
+            results[test_id] = exists is not None
+
+        return jsonify({
+            "id_checked": student_id,
+            "test_cases": results,
+            "all_cases_available": all(not exists for exists in results.values()),
+            "original_case_exists": student_original is not None,
+            "uppercase_exists": student_upper is not None,
+            "original_case_result": student_original,
+            "uppercase_result": student_upper
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@student_bp.route("/validate-program/<program_code>", methods=["GET"])
+def validate_program_code(program_code):
+    """Validate if a program code exists (for real-time validation)"""
+    try:
+        # Check if program exists using case-insensitive lookup
+        program = get_one("program", where_clause="UPPER(code) = %s", params=[program_code.upper()])
+
+        if not program:
+            # Provide available programs for better error messaging
+            available_programs = get_all("program", columns="code, name")
+            program_list = [p["code"] for p in available_programs] if available_programs else []
+
+            return jsonify({
+                "valid": False,
+                "message": f"Program '{program_code}' not found. Available programs: {', '.join(program_list[:5])}{'...' if len(program_list) > 5 else ''}",
+                "available_programs": program_list
+            }), 200
+
+        # Return program details with EXACT stored code (not transformed)
+        return jsonify({
+            "valid": True,
+            "program": {
+                "code": program["code"],  # Use exact code as stored in database
+                "name": program["name"]
+            }
+        }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

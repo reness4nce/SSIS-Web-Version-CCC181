@@ -1,13 +1,9 @@
-# Dev environment
-pip
-autopep8
-
-# App
+# Runtime dependencies
 flask
-Flask-SQLAlchemy
-Flask-Migrate
-Flask-Cors
-Flask-WTF
-email-validator
 python-dotenv
 psycopg2-binary
+werkzeug
+
+# Development dependencies (for local development)
+# pip
+# autopep8

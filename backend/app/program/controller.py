@@ -1,14 +1,15 @@
 from flask import Blueprint, request, jsonify
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from db import (
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from ..database import (
     get_all, get_one, insert_record, update_record, delete_record,
-    count_records, execute_raw_sql, paginate_query
+    count_records, execute_raw_sql, paginate_query, db_manager
 )
+from .models import Program
 import re
 
-program_bp = Blueprint("program", __name__, url_prefix="/api/programs")
+program_bp = Blueprint("program", __name__, url_prefix="/programs")
 
 def validate_program_data(data, program_code=None):
     """Validate program data"""
@@ -20,14 +21,19 @@ def validate_program_data(data, program_code=None):
             errors.append(f"{field} is required")
 
     if "code" in data and data["code"]:
-        code = data["code"].upper()
-        if not re.match(r"^[A-Z0-9\-]{2,10}$", code):
+        code = data["code"].strip()
+        if not re.match(r"^[A-Za-z0-9\-]{2,10}$", code):
             errors.append("Program code must be 2-10 characters, letters, numbers, and hyphens only")
 
-        # Check if program code already exists using raw SQL
-        existing = get_one("program", where_clause="code = %s", params=[code])
-        if existing and (not program_code or existing["code"] != program_code):
-            errors.append("Program code already exists")
+        # Check if program code already exists using case-insensitive raw SQL
+        existing = get_one("program", where_clause="UPPER(code) = %s", params=[code.upper()])
+        if existing:
+            # If this is an update and the existing code is different from current program code, it's a conflict
+            if program_code and existing["code"].upper() != program_code.upper():
+                errors.append("Program code already exists")
+            # If this is a create and code exists, it's a conflict
+            elif not program_code:
+                errors.append("Program code already exists")
 
     if "name" in data and data["name"]:
         if len(data["name"].strip()) < 5:
@@ -36,8 +42,8 @@ def validate_program_data(data, program_code=None):
             errors.append("Program name must not exceed 100 characters")
 
     if "college" in data and data["college"]:
-        # Check if college exists using raw SQL
-        college = get_one("college", where_clause="code = %s", params=[data["college"].upper()])
+        # Check if college exists using case-insensitive raw SQL
+        college = get_one("college", where_clause="UPPER(code) = %s", params=[data["college"].upper()])
         if not college:
             errors.append("Invalid college code")
 
@@ -48,6 +54,8 @@ def validate_program_data(data, program_code=None):
 def get_programs():
     """Get all programs with pagination, search, and sorting"""
     try:
+        # Reset connection if needed to avoid transaction errors
+        db_manager.get_connection()  # This will reset if connection is bad
         page = request.args.get("page", 1, type=int)
         per_page = min(request.args.get("per_page", 10, type=int), 100)
         search = request.args.get("search", "", type=str)
@@ -63,8 +71,8 @@ def get_programs():
         if search:
             search_term = f"%{search}%"
             if filter_field == "all":
-                where_conditions.append("(p.code ILIKE %s OR p.name ILIKE %s OR c.name ILIKE %s)")
-                params.extend([search_term, search_term, search_term])
+                where_conditions.append("(p.code ILIKE %s OR p.name ILIKE %s OR c.name ILIKE %s OR c.code ILIKE %s)")
+                params.extend([search_term, search_term, search_term, search_term])
             elif filter_field == "code":
                 where_conditions.append("p.code ILIKE %s")
                 params.append(search_term)
@@ -72,8 +80,8 @@ def get_programs():
                 where_conditions.append("p.name ILIKE %s")
                 params.append(search_term)
             elif filter_field == "college":
-                where_conditions.append("c.name ILIKE %s")
-                params.append(search_term)
+                where_conditions.append("(c.name ILIKE %s OR c.code ILIKE %s)")
+                params.extend([search_term, search_term])
 
         if college_filter:
             where_conditions.append("p.college = %s")
@@ -91,18 +99,18 @@ def get_programs():
             order_clause = "p.code ASC"
 
         # Get total count for pagination
-        count_query = "SELECT COUNT(*) as count FROM program p"
+        count_query = "SELECT COUNT(*) as count FROM program p LEFT JOIN college c ON p.college = c.code"
         if where_clause:
             count_query += f" WHERE {where_clause}"
 
         total_count_result = execute_raw_sql(count_query, params=params, fetch=True)
         total_count = total_count_result[0]['count'] if total_count_result else 0
 
-        # Build main query with JOIN
+        # Build main query with LEFT JOIN
         query = """
             SELECT p.code, p.name, p.college, c.name as college_name
             FROM program p
-            JOIN college c ON p.college = c.code
+            LEFT JOIN college c ON p.college = c.code
         """
         if where_clause:
             query += f" WHERE {where_clause}"
@@ -125,12 +133,12 @@ def get_programs():
 def get_program(program_code):
     """Get a specific program by code"""
     try:
-        # Get program with college info using raw SQL
+        # Get program with college info using case-insensitive raw SQL
         program_query = """
             SELECT p.code, p.name, p.college, c.name as college_name
             FROM program p
-            JOIN college c ON p.college = c.code
-            WHERE p.code = %s
+            LEFT JOIN college c ON p.college = c.code
+            WHERE UPPER(p.code) = %s
         """
         program = execute_raw_sql(program_query, params=[program_code.upper()], fetch=True)
 
@@ -144,11 +152,11 @@ def get_program(program_code):
             'college_name': program[0]['college_name']
         }
 
-        # Get year distribution stats using raw SQL
+        # Get year distribution stats using case-insensitive raw SQL
         year_stats_query = """
             SELECT year, COUNT(*) as count
             FROM student
-            WHERE course = %s
+            WHERE UPPER(course) = %s
             GROUP BY year
             ORDER BY year
         """
@@ -172,9 +180,9 @@ def create_program():
         if errors:
             return jsonify({"errors": errors}), 400
 
-        # Insert program using raw SQL
+        # Insert program using raw SQL - store original case but normalized
         program_data = {
-            'code': data["code"].upper().strip(),
+            'code': data["code"].strip(),
             'name': data["name"].strip(),
             'college': data["college"].upper().strip()
         }
@@ -192,11 +200,11 @@ def create_program():
 
 @program_bp.route("/<program_code>", methods=["PUT"])
 def update_program(program_code):
-    """Update an existing program"""
+    """Update an existing program with proper cascading support"""
     try:
-        # Check if program exists
-        program = get_one("program", where_clause="code = %s", params=[program_code.upper()])
-        if not program:
+        # Check if program exists using case-insensitive lookup
+        existing_program = get_one("program", where_clause="UPPER(code) = %s", params=[program_code.upper()])
+        if not existing_program:
             return jsonify({"error": "Program not found"}), 404
 
         data = request.get_json()
@@ -207,28 +215,76 @@ def update_program(program_code):
         if errors:
             return jsonify({"errors": errors}), 400
 
-        # Update program using raw SQL
-        update_data = {
-            'name': data.get("name", program['name']).strip(),
-            'college': data.get("college", program['college']).upper().strip()
-        }
+        # Handle program code changes with proper cascading
+        old_code = existing_program['code']
+        update_data = {}
+        code_changed = False
 
-        rows_updated = update_record(
-            "program",
-            update_data,
-            "code = %s",
-            params={'name': update_data['name'], 'college': update_data['college'], 'code': program_code.upper()}
-        )
+        if "name" in data:
+            update_data['name'] = data["name"].strip()
+        if "college" in data:
+            update_data['college'] = data["college"].upper().strip()
+        if "code" in data:
+            new_code = data["code"].strip()
+            if new_code.upper() != old_code.upper():
+                update_data['code'] = new_code
+                code_changed = True
 
-        if rows_updated == 0:
-            return jsonify({"error": "Program not found"}), 404
+        if not update_data:
+            return jsonify({"error": "No fields to update"}), 400
 
-        # Get updated program
-        updated_program = get_one("program", where_clause="code = %s", params=[program_code.upper()])
+        # Use transaction for atomic updates
+        with db_manager.get_cursor(commit=True) as cursor:
+            if code_changed:
+                # First, get all students that will be affected by the cascade
+                affected_students = cursor.execute(
+                    "SELECT id, course FROM student WHERE UPPER(course) = %s",
+                    [old_code.upper()]
+                )
+                affected_students = cursor.fetchall()
+
+                # Update program code - this should cascade to students due to ON UPDATE CASCADE
+                cursor.execute(
+                    "UPDATE program SET code = %s WHERE UPPER(code) = %s",
+                    [update_data['code'], old_code.upper()]
+                )
+
+                # Verify the cascade worked
+                updated_students = cursor.execute(
+                    "SELECT id, course FROM student WHERE course = %s",
+                    [update_data['code']]
+                )
+                updated_students = cursor.fetchall()
+
+                # Log the cascading update for transparency
+                print(f"Program code updated from '{old_code}' to '{update_data['code']}'")
+                print(f"Affected {len(affected_students)} student records")
+
+                if len(updated_students) != len(affected_students):
+                    # Rollback if cascade didn't work properly
+                    cursor.execute("ROLLBACK")
+                    return jsonify({
+                        "error": "Failed to update all student references. Transaction rolled back."
+                    }), 500
+            else:
+                # Simple update without code change
+                set_clause = ", ".join([f"{key} = %s" for key in update_data.keys()])
+                where_params = [old_code.upper()]
+
+                query = f"UPDATE program SET {set_clause} WHERE UPPER(code) = %s"
+                all_params = list(update_data.values()) + where_params
+
+                cursor.execute(query, all_params)
+
+        # Get updated program using the new code if it changed
+        final_code = update_data.get('code', old_code)
+        updated_program = get_one("program", where_clause="UPPER(code) = %s", params=[final_code.upper()])
 
         return jsonify({
             "message": "Program updated successfully",
-            "program": updated_program
+            "program": updated_program,
+            "code_changed": code_changed,
+            "affected_students": len(affected_students) if code_changed else 0
         }), 200
 
     except Exception as e:
@@ -239,18 +295,13 @@ def update_program(program_code):
 def delete_program(program_code):
     """Delete a program"""
     try:
-        # Check if program exists
-        program = get_one("program", where_clause="code = %s", params=[program_code.upper()])
+        # Check if program exists using case-insensitive lookup
+        program = get_one("program", where_clause="UPPER(code) = %s", params=[program_code.upper()])
         if not program:
             return jsonify({"error": "Program not found"}), 404
 
-        # Check if program has enrolled students
-        student_count = count_records("student", where_clause="course = %s", params=[program_code.upper()])
-        if student_count > 0:
-            return jsonify({"error": f"Cannot delete program. {student_count} students are enrolled."}), 400
-
-        # Delete program using raw SQL
-        rows_deleted = delete_record("program", "code = %s", params=[program_code.upper()])
+        # Delete program using case-insensitive raw SQL (students will have course field set to NULL)
+        rows_deleted = delete_record("program", "UPPER(code) = %s", params=[program_code.upper()])
 
         if rows_deleted == 0:
             return jsonify({"error": "Program not found"}), 404
@@ -275,7 +326,7 @@ def get_program_stats():
                 c.name as college_name,
                 COUNT(p.code) as count
             FROM program p
-            JOIN college c ON p.college = c.code
+            LEFT JOIN college c ON p.college = c.code
             GROUP BY p.college, c.name
             ORDER BY p.college
         """

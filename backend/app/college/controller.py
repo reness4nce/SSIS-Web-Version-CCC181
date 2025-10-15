@@ -1,24 +1,33 @@
 from flask import Blueprint, request, jsonify
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from db import (
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from ..database import (
     get_all, get_one, insert_record, update_record, delete_record,
     count_records, execute_raw_sql, paginate_query
 )
+from .models import College
 import re
 
 # Create Blueprint for college routes
 college_bp = Blueprint("college", __name__, url_prefix="/api/colleges")
 
-def validate_college_data(data, college_code=None):
+def validate_college_data(data, college_code=None, is_update=False):
     """Validate college data"""
     errors = []
-    required_fields = ["code", "name"]
 
-    for field in required_fields:
-        if field not in data or not data[field]:
-            errors.append(f"{field} is required")
+    # For updates, only validate fields that are actually being provided
+    if is_update:
+        if "name" in data and not data["name"]:
+            errors.append("name cannot be empty")
+        if "code" in data and not data["code"]:
+            errors.append("code cannot be empty")
+    else:
+        # For creates, both fields are required
+        required_fields = ["code", "name"]
+        for field in required_fields:
+            if field not in data or not data[field]:
+                errors.append(f"{field} is required")
 
     if "code" in data and data["code"]:
         code = data["code"].upper()
@@ -27,8 +36,13 @@ def validate_college_data(data, college_code=None):
 
         # Check if college code already exists using raw SQL
         existing = get_one("college", where_clause="code = %s", params=[code])
-        if existing and (not college_code or existing["code"] != college_code):
-            errors.append("College code already exists")
+        if existing:
+            # If this is an update and the existing code is different from current college code, it's a conflict
+            if is_update and college_code and existing["code"] != college_code:
+                errors.append("College code already exists")
+            # If this is a create and code exists, it's a conflict
+            elif not is_update:
+                errors.append("College code already exists")
 
     if "name" in data and data["name"]:
         if len(data["name"].strip()) < 5:
@@ -99,23 +113,24 @@ def get_colleges():
         return jsonify({"error": str(e)}), 500
 
 
-@college_bp.route("/<college_code>", methods=["GET"])
-def get_college(college_code):
-    """Get a specific college by code"""
+@college_bp.route("/<college_identifier>", methods=["GET"])
+def get_college(college_identifier):
+    """Get a specific college by code or uniqueID"""
     try:
-        # Get college using raw SQL
-        college = get_one("college", where_clause="code = %s", params=[college_code.upper()])
+        # Get college by code (primary identifier)
+        college = get_one("college", where_clause="code = %s", params=[college_identifier.upper()])
 
         if not college:
             return jsonify({"error": "College not found"}), 404
 
         college_dict = {
+            'id': None,  # No ID column in current schema
             'code': college['code'],
             'name': college['name']
         }
 
         # Get programs for this college
-        programs = get_all("program", where_clause="college = %s", params=[college_code.upper()])
+        programs = get_all("program", where_clause="college = %s", params=[college['code']])
 
         # Get student count for each program
         programs_with_count = []
@@ -136,7 +151,7 @@ def get_college(college_code):
             JOIN program p ON s.course = p.code
             WHERE p.college = %s
         """
-        total_students_result = execute_raw_sql(total_students_query, params=[college_code.upper()], fetch=True)
+        total_students_result = execute_raw_sql(total_students_query, params=[college['code']], fetch=True)
         college_dict["total_students"] = total_students_result[0]['count'] if total_students_result else 0
 
         return jsonify(college_dict), 200
@@ -173,12 +188,13 @@ def create_college():
         return jsonify({"error": str(e)}), 500
 
 
-@college_bp.route("/<college_code>", methods=["PUT"])
-def update_college(college_code):
-    """Update an existing college"""
+@college_bp.route("/<college_identifier>", methods=["PUT"])
+def update_college(college_identifier):
+    """Update an existing college by code or uniqueID"""
     try:
-        # Check if college exists
-        college = get_one("college", where_clause="code = %s", params=[college_code.upper()])
+        # Get college by code (primary identifier)
+        college = get_one("college", where_clause="code = %s", params=[college_identifier.upper()])
+
         if not college:
             return jsonify({"error": "College not found"}), 404
 
@@ -186,26 +202,34 @@ def update_college(college_code):
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
-        errors = validate_college_data(data, college_code.upper())
+        errors = validate_college_data(data, college['code'], is_update=True)
         if errors:
             return jsonify({"errors": errors}), 400
 
         # Update college using raw SQL
-        update_data = {'name': data.get("name", college['name']).strip()}
-        where_params = [college_code.upper()]
+        update_data = {}
+        if "name" in data:
+            update_data['name'] = data["name"].strip()
+        if "code" in data:
+            update_data['code'] = data["code"].upper().strip()
 
+        if not update_data:
+            return jsonify({"error": "No fields to update"}), 400
+
+        # Update by code (since database uses code as primary identifier)
         rows_updated = update_record(
             "college",
             update_data,
             "code = %s",
-            params={'name': update_data['name'], 'code': college_code.upper()}
+            params=[college_identifier.upper()]  # WHERE parameter
         )
 
         if rows_updated == 0:
             return jsonify({"error": "College not found"}), 404
 
-        # Get updated college
-        updated_college = get_one("college", where_clause="code = %s", params=[college_code.upper()])
+        # Get updated college using the new college code if code was updated
+        final_college_code = update_data.get('code', college['code'])
+        updated_college = get_one("college", where_clause="code = %s", params=[final_college_code])
 
         return jsonify({
             "message": "College updated successfully",
@@ -213,25 +237,27 @@ def update_college(college_code):
         }), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        error_message = str(e)
+        if "violates foreign key constraint" in error_message:
+            return jsonify({
+                "error": "Cannot update college code because it has linked programs. Please contact administrator or update programs first."
+            }), 400
+        else:
+            return jsonify({"error": error_message}), 500
 
 
-@college_bp.route("/<college_code>", methods=["DELETE"])
-def delete_college(college_code):
-    """Delete a college"""
+@college_bp.route("/<college_identifier>", methods=["DELETE"])
+def delete_college(college_identifier):
+    """Delete a college by code or uniqueID"""
     try:
-        # Check if college exists
-        college = get_one("college", where_clause="code = %s", params=[college_code.upper()])
+        # Get college by code (primary identifier)
+        college = get_one("college", where_clause="code = %s", params=[college_identifier.upper()])
+
         if not college:
             return jsonify({"error": "College not found"}), 404
 
-        # Check if college has programs
-        program_count = count_records("program", where_clause="college = %s", params=[college_code.upper()])
-        if program_count > 0:
-            return jsonify({"error": f"Cannot delete college. {program_count} programs belong to this college."}), 400
-
-        # Delete college using raw SQL
-        rows_deleted = delete_record("college", "code = %s", params=[college_code.upper()])
+        # Delete college using raw SQL (programs will have college field set to NULL)
+        rows_deleted = delete_record("college", "code = %s", params=[college_identifier.upper()])
 
         if rows_deleted == 0:
             return jsonify({"error": "College not found"}), 404
@@ -270,10 +296,11 @@ def get_college_stats():
                 "total_colleges": total_colleges,
                 "colleges": [
                     {
-                        "code": stat['code'],
-                        "name": stat['name'],
-                        "program_count": stat['program_count'] or 0,
-                        "student_count": stat['student_count'] or 0,
+                        "id": None,  # No ID column in current schema
+                        "code": stat.get('code', ''),
+                        "name": stat.get('name', ''),
+                        "program_count": stat.get('program_count', 0) or 0,
+                        "student_count": stat.get('student_count', 0) or 0,
                     }
                     for stat in college_stats or []
                 ],

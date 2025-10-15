@@ -36,7 +36,7 @@ def upgrade():
     sa.Column('code', sa.String(length=20), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('college', sa.String(length=20), nullable=False),
-    sa.ForeignKeyConstraint(['college'], ['college.code'], ),
+    sa.ForeignKeyConstraint(['college'], ['college.code'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('code')
     )
     op.create_table('student',
@@ -46,7 +46,7 @@ def upgrade():
     sa.Column('course', sa.String(length=20), nullable=False),
     sa.Column('year', sa.Integer(), nullable=False),
     sa.Column('gender', sa.String(length=10), nullable=False),
-    sa.ForeignKeyConstraint(['course'], ['program.code'], ),
+    sa.ForeignKeyConstraint(['course'], ['program.code'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     # ### end Alembic commands ###

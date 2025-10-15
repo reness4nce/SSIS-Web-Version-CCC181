@@ -20,15 +20,38 @@ class DatabaseManager:
 
     def get_connection(self):
         """Get database connection"""
+        try:
+            # Check if connection is healthy
+            if self.connection and not self.connection.closed:
+                # Test the connection with a simple query
+                cursor = self.connection.cursor()
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+                cursor.close()
+                return self.connection
+        except (psycopg2.Error, AttributeError):
+            # Connection is bad, reset it
+            self.close_connection()
+
+        # Create new connection
         if self.connection is None or self.connection.closed:
             self.connection = psycopg2.connect(DATABASE_URL)
         return self.connection
 
+    def reset_connection(self):
+        """Force reset the database connection"""
+        self.close_connection()
+        return self.get_connection()
+
     def close_connection(self):
         """Close database connection"""
         if self.connection and not self.connection.closed:
-            self.connection.close()
-            self.connection = None
+            try:
+                self.connection.close()
+            except:
+                pass  # Ignore errors when closing
+            finally:
+                self.connection = None
 
     @contextmanager
     def get_cursor(self, commit=False):
@@ -85,7 +108,11 @@ def get_one(table_name, columns="*", where_clause=None, params=None):
     if where_clause:
         query += f" WHERE {where_clause}"
 
-    return db_manager.execute_single(query, params)
+    print(f"Database query: {query}")
+    print(f"Database params: {params}")
+    result = db_manager.execute_single(query, params)
+    print(f"Database result: {result}")
+    return result
 
 def insert_record(table_name, data, returning="*", commit=True):
     """Insert record and return specified columns"""
@@ -104,10 +131,27 @@ def insert_record(table_name, data, returning="*", commit=True):
 
 def update_record(table_name, data, where_clause, params=None, commit=True):
     """Update record(s) in a table"""
-    set_clause = ", ".join([f"{key} = %({key})s" for key in data.keys()])
+    # Use positional placeholders for both SET and WHERE clauses to avoid mixing formats
+    set_clause = ", ".join([f"{key} = %s" for key in data.keys()])
+
     query = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}"
 
-    all_params = {**data, **(params or {})}
+    # Handle parameters correctly - ensure proper ordering
+    # SET parameters (data.values()) must come before WHERE parameters (params)
+    if params is not None:
+        if isinstance(params, dict):
+            # For cases where params is a dict of additional values
+            all_params = list(data.values()) + list(params.values())
+        else:
+            # For cases where params is a list/tuple of WHERE parameters
+            all_params = list(data.values()) + list(params)
+    else:
+        all_params = list(data.values())
+
+    # Validate parameter count matches placeholder count
+    placeholder_count = query.count('%s')
+    if len(all_params) != placeholder_count:
+        raise ValueError(f"Parameter count mismatch: expected {placeholder_count}, got {len(all_params)}")
 
     with db_manager.get_cursor(commit=commit) as cursor:
         cursor.execute(query, all_params)

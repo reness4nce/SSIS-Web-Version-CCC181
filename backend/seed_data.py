@@ -1,12 +1,10 @@
 import random
-from faker import Faker
 
-from app.extensions import db
-from app.models.college import College
-from app.models.program import Program
-from app.models.student import Student
-from app.models.user import User
-fake = Faker()
+from app.college.models import College
+from app.program.models import Program
+from app.student.models import Student
+from app.auth.models import User
+from app.database import count_records, get_all, execute_raw_sql
 
 COLLEGES_DATA = [
     ('CASS', 'College of Arts and Social Sciences'),   
@@ -123,39 +121,71 @@ DEFAULT_ADMIN_USERS = [
 # ====================================================================================
 
 def create_colleges():
-    # This function is preserved from your original file
+    """Create colleges, checking for existing records first"""
     print("Creating colleges...")
-    colleges = [College(code=code, name=name) for code, name in COLLEGES_DATA]
-    db.session.add_all(colleges)
-    db.session.commit()
-    print(f"Created {len(colleges)} colleges")
-    return colleges
+    created_count = 0
+
+    for code, name in COLLEGES_DATA:
+        # Check if college already exists
+        existing_college = College.get_by_code(code)
+        if existing_college:
+            print(f"  ✓ College '{code}' already exists, skipping...")
+            continue
+
+        # Create new college
+        try:
+            result = College.create_college(code, name)
+            if result:
+                created_count += 1
+                print(f"  ✓ Created college '{code}': {name}")
+            else:
+                print(f"  ✗ Failed to create college '{code}'")
+        except Exception as e:
+            print(f"  ✗ Error creating college '{code}': {str(e)}")
+
+    print(f"Created {created_count} new colleges")
+    return COLLEGES_DATA
 
 def create_programs():
-    # This function is preserved from your original file
+    """Create programs, checking for existing records first"""
     print("Creating programs...")
-    # In your model, Program.college is a string code, which is fine
-    programs = [Program(code=code, name=name, college=college_code) for code, name, college_code in PROGRAMS_DATA]
-    db.session.add_all(programs)
-    db.session.commit()
-    print(f"Created {len(programs)} programs")
-    return programs
+    created_count = 0
 
-def create_students(programs, target_count=None):
+    for code, name, college_code in PROGRAMS_DATA:
+        # Check if program already exists
+        existing_program = Program.get_by_code(code)
+        if existing_program:
+            print(f"  ✓ Program '{code}' already exists, skipping...")
+            continue
+
+        # Create new program
+        try:
+            result = Program.create_program(code, name, college_code)
+            if result:
+                created_count += 1
+                print(f"  ✓ Created program '{code}': {name}")
+            else:
+                print(f"  ✗ Failed to create program '{code}'")
+        except Exception as e:
+            print(f"  ✗ Error creating program '{code}': {str(e)}")
+
+    print(f"Created {created_count} new programs")
+    return PROGRAMS_DATA
+
+def create_students(program_codes, target_count=None):
     """
-    Create students with organized data structure.
+    Create students with organized data structure, checking for existing records first.
 
     Args:
-        programs: List of Program objects
+        program_codes: List of program code strings
         target_count: Number of students to create (uses config default if None)
     """
     if target_count is None:
         target_count = STUDENT_GENERATION_CONFIG['default_student_count']
 
     print(f"Creating {target_count} students...")
+    created_count = 0
 
-    students = []
-    program_codes = [p.code for p in programs]
     years = STUDENT_GENERATION_CONFIG['academic_years']
     year_levels = STUDENT_GENERATION_CONFIG['year_levels']
     gender_options = STUDENT_GENERATION_CONFIG['gender_options']
@@ -163,67 +193,98 @@ def create_students(programs, target_count=None):
     students_per_year = target_count // len(years)
     remaining_students = target_count % len(years)
 
+    # Simple approach: just create sequential IDs starting from 1 for each year
     for year_idx, year in enumerate(years):
         year_student_count = students_per_year + (1 if year_idx < remaining_students else 0)
-        existing_count = Student.query.filter(Student.id.like(f'{year}-%')).count()
-        student_ids = [f'{year}-{(existing_count + i + 1):04d}' for i in range(year_student_count)]
 
         for i in range(year_student_count):
+            student_id = f'{year}-{(i + 1):04d}'
+
+            # Check if student already exists
+            existing_student = Student.get_by_id(student_id)
+            if existing_student:
+                print(f"  ✓ Student '{student_id}' already exists, skipping...")
+                continue
+
             gender = random.choice(gender_options)
             firstname = random.choice(FILIPINO_FIRST_NAMES_MALE) if gender == 'Male' else random.choice(FILIPINO_FIRST_NAMES_FEMALE)
             lastname = random.choice(FILIPINO_LAST_NAMES)
-            student = Student(
-                id=student_ids[i],
-                firstname=firstname,
-                lastname=lastname,
-                course=random.choice(program_codes),
-                year=random.choice(year_levels),
-                gender=gender
-            )
-            students.append(student)
 
-    db.session.add_all(students)
-    db.session.commit()
-    print(f"✅ Successfully created {len(students)} students")
-    return students
+            # Create new student
+            try:
+                result = Student.create_student(
+                    student_id=student_id,
+                    firstname=firstname,
+                    lastname=lastname,
+                    course=random.choice(program_codes),
+                    year=random.choice(year_levels),
+                    gender=gender
+                )
+                if result:
+                    created_count += 1
+                    print(f"  ✓ Created student '{student_id}': {firstname} {lastname}")
+                else:
+                    print(f"  ✗ Failed to create student '{student_id}'")
+            except Exception as e:
+                print(f"  ✗ Error creating student '{student_id}': {str(e)}")
+
+    print(f"Created {created_count} new students")
+    return created_count
 
 def create_admin_users():
-    """Create default admin users with SECURE hashed passwords using organized data."""
+    """Create default admin users, checking for existing records first"""
     print("Creating admin users...")
+    created_count = 0
 
-    new_users = []
     for username, email, password in DEFAULT_ADMIN_USERS:
-        if not User.query.filter_by(username=username).first():
-            # ** SECURITY UPGRADE **
-            user = User(username=username, email=email)
-            user.set_password(password) # Use the secure method
-            new_users.append(user)
-            db.session.add(user)
+        # Check if user already exists
+        existing_user = User.get_by_username(username)
+        if existing_user:
+            print(f"  ✓ User '{username}' already exists, skipping...")
+            continue
 
-    if new_users:
-        db.session.commit()
-    print(f"✅ Created/verified {len(DEFAULT_ADMIN_USERS)} admin users.")
+        # Create new user
+        try:
+            result = User.create_user(username, email, password)
+            if result:
+                created_count += 1
+                print(f"  ✓ Created user '{username}': {email}")
+            else:
+                print(f"  ✗ Failed to create user '{username}'")
+        except Exception as e:
+            print(f"  ✗ Error creating user '{username}': {str(e)}")
+
+    print(f"Created {created_count} new admin users")
 
 def seed_database():
     """Main seeding function, designed to be called via Flask CLI."""
     print("Starting database seeding...")
     try:
-        if College.query.count() > 0:
-            print("Database already has data. Skipping seeding.")
-            return
-        
+        # Check if data already exists using raw SQL
+        college_count = count_records("college")
+        # Temporarily force reseed for testing
+        # if college_count > 0:
+        #     print("Database already has data. Skipping seeding.")
+        #     return
+
         create_colleges()
         create_programs()
-        create_students(Program.query.all(), target_count=350)
+
+        # Get program codes for student creation
+        programs_result = execute_raw_sql("SELECT code FROM program", fetch=True)
+        program_codes = [p['code'] for p in programs_result] if programs_result else []
+
+        if program_codes:
+            create_students(program_codes, target_count=350)
+
         create_admin_users()
-        
+
         print("\n=== Database Seeding Complete ===")
         print("\n=== Login Credentials ===")
         print("Username: admin | Password: admin123")
         print("Username: test  | Password: test123")
         print("Username: demo  | Password: demo123")
-        
+
     except Exception as e:
         print(f"Error during seeding: {str(e)}")
-        db.session.rollback()
         raise
