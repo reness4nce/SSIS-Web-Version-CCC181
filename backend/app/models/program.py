@@ -1,4 +1,4 @@
-from extensions import db
+from ..extensions import db
 
 class Program(db.Model):
     __tablename__ = 'program'

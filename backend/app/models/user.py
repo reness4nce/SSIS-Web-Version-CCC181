@@ -1,6 +1,6 @@
 from werkzeug.security import generate_password_hash, check_password_hash
 # Corrected import for the new flat structure
-from extensions import db
+from ..extensions import db
 
 # The UserMixin is removed as we are using a custom session-based auth
 class User(db.Model):

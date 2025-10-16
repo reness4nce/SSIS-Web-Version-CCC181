@@ -7,13 +7,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Corrected import: Only imports what extensions.py provides
-from extensions import db, migrate
-from models.user import User
+from .extensions import db, migrate
+from .models.user import User
 
 # --- Main Application Factory ---
 def create_app(config=None):
     """Creates and a new Flask application."""
-    app = Flask(__name__, instance_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance'))
+    import os as os_module
+    app = Flask(__name__, instance_path=os_module.path.join(os_module.path.dirname(os_module.path.abspath(__file__)), 'instance'))
 
     # --- Configuration ---
     app.config.from_mapping(
@@ -24,7 +25,7 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
-    os.makedirs(app.instance_path, exist_ok=True)
+    os_module.makedirs(app.instance_path, exist_ok=True)
 
     # --- Initialize Extensions with the App ---
     db.init_app(app)
@@ -34,10 +35,10 @@ def create_app(config=None):
     CORS(app, supports_credentials=True, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
 
     # --- Register API Blueprints ---
-    from routes.auth import auth_bp
-    from routes.college import college_bp
-    from routes.program import program_bp
-    from routes.student import student_bp
+    from .routes.auth import auth_bp
+    from .routes.college import college_bp
+    from .routes.program import program_bp
+    from .routes.student import student_bp
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(college_bp, url_prefix='/api/colleges')
@@ -45,6 +46,9 @@ def create_app(config=None):
     app.register_blueprint(student_bp, url_prefix='/api/students')
     
     # --- Register CLI Commands ---
+    import sys
+    import os as os_module
+    sys.path.append(os_module.path.dirname(os_module.path.dirname(os_module.path.abspath(__file__))))
     import seed_data
     @app.cli.command("seed-db")
     def seed_db_command():

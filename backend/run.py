@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Corrected import: Only imports what extensions.py provides
-from extensions import db, migrate
-from models.user import User
+from app.extensions import db, migrate
 
 # --- Main Application Factory ---
 def create_app(config=None):
@@ -20,6 +19,10 @@ def create_app(config=None):
         SECRET_KEY=os.getenv("SECRET_KEY", "a-very-secret-dev-key"),
         SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL", f"sqlite:///{app.instance_path}/sis.db"),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        SQLALCHEMY_ENGINE_OPTIONS={
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
+        }
     )
     if config:
         app.config.update(config)
@@ -28,16 +31,23 @@ def create_app(config=None):
 
     # --- Initialize Extensions with the App ---
     db.init_app(app)
+    
+    # Import ALL models so Flask-Migrate can detect them!
+    from app.models.user import User
+    from app.models.student import Student
+    from app.models.college import College
+    from app.models.program import Program
+    
     migrate.init_app(app, db) # Initialize migrate with the app and db
 
     # --- Enable CORS for Frontend Communication ---
     CORS(app, supports_credentials=True, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
 
     # --- Register API Blueprints ---
-    from routes.auth import auth_bp
-    from routes.college import college_bp
-    from routes.program import program_bp
-    from routes.student import student_bp
+    from app.routes.auth import auth_bp
+    from app.routes.college import college_bp
+    from app.routes.program import program_bp
+    from app.routes.student import student_bp
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(college_bp, url_prefix='/api/colleges')

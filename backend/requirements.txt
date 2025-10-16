@@ -5,5 +5,9 @@ autopep8
 # App
 flask
 Flask-SQLAlchemy
+Flask-Migrate
 Flask-Cors
+Flask-WTF
+email-validator
 python-dotenv
+psycopg2-binary

@@ -1,11 +1,11 @@
 import random
 from faker import Faker
 
-from extensions import db
-from models.college import College
-from models.program import Program
-from models.student import Student
-from models.user import User
+from app.extensions import db
+from app.models.college import College
+from app.models.program import Program
+from app.models.student import Student
+from app.models.user import User
 fake = Faker()
 
 COLLEGES_DATA = [
