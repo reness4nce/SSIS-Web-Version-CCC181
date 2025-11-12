@@ -4,15 +4,11 @@ from wtforms import StringField, PasswordField, validators
 from wtforms.validators import DataRequired, Email, EqualTo, Length, ValidationError
 import re
 
-# Updated imports for raw SQL models
+# Updated imports for Supabase models
 from .models import User
 from ..college.models import College
 from ..program.models import Program
 from ..student.models import Student
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from ..database import count_records, execute_raw_sql
 
 # Your Blueprint is correct
 auth_bp = Blueprint('auth', __name__)
@@ -70,7 +66,7 @@ def validate_user_data(data):
     # ... (code omitted for brevity)
     return errors
 
-# --- Your API Endpoints (with corrected imports) ---
+# --- API Endpoints Updated for Supabase ---
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -221,10 +217,10 @@ def signup():
 def get_dashboard_stats():
     """Get dashboard statistics aggregating data from all entities"""
     try:
-        # Get total counts using raw SQL
-        total_students = count_records("student")
-        total_programs = count_records("program")
-        total_colleges = count_records("college")
+        # Get total counts using Supabase models
+        total_students = Student.count_students()
+        total_programs = len(Program.get_all_programs())
+        total_colleges = len(College.get_all_colleges())
 
         return jsonify({
             "total_students": total_students,
@@ -233,56 +229,78 @@ def get_dashboard_stats():
         }), 200
 
     except Exception as e:
+        print(f"Dashboard stats error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @auth_bp.route('/dashboard/charts', methods=['GET'])
 def get_dashboard_charts():
     """Get chart data for dashboard visualizations"""
     try:
-        # Students by Program (Bar Chart data) using raw SQL
-        program_enrollment_query = """
-            SELECT
-                p.code,
-                p.name,
-                COUNT(s.id) as student_count
-            FROM program p
-            LEFT JOIN student s ON p.code = s.course
-            GROUP BY p.code, p.name
-            ORDER BY p.code
-        """
-        program_enrollment = execute_raw_sql(program_enrollment_query, fetch=True)
+        # Students by Program using Supabase models
+        try:
+            # Try to use the enhanced get_program_stats method
+            program_stats = Program.get_program_stats()
+            students_by_program = [
+                {
+                    "program_code": prog['code'],
+                    "program_name": prog.get('name', prog.get('program_name', 'Unknown')),
+                    "student_count": prog.get('student_count', 0)
+                }
+                for prog in program_stats or []
+            ]
+        except Exception as e:
+            print(f"Error getting program stats: {e}")
+            # Fallback to direct student counting
+            programs = Program.get_all_programs()
+            students_by_program = []
+            for program in programs or []:
+                try:
+                    student_count = Student.count_students(course_filter=program['code'])
+                    students_by_program.append({
+                        "program_code": program['code'],
+                        "program_name": program['name'],
+                        "student_count": student_count
+                    })
+                except Exception as e:
+                    print(f"Error counting students for program {program['code']}: {e}")
+                    students_by_program.append({
+                        "program_code": program['code'],
+                        "program_name": program['name'],
+                        "student_count": 0
+                    })
 
-        students_by_program = [
-            {
-                "program_code": row['code'],
-                "program_name": row['name'],
-                "student_count": row['student_count'] or 0
-            }
-            for row in program_enrollment or []
-        ]
-
-        # Students by College (Pie Chart data) using raw SQL
-        college_enrollment_query = """
-            SELECT
-                c.code,
-                c.name,
-                COUNT(s.id) as student_count
-            FROM college c
-            LEFT JOIN program p ON c.code = p.college
-            LEFT JOIN student s ON p.code = s.course
-            GROUP BY c.code, c.name
-            ORDER BY c.code
-        """
-        college_enrollment = execute_raw_sql(college_enrollment_query, fetch=True)
-
-        students_by_college = [
-            {
-                "college_code": row['code'],
-                "college_name": row['name'],
-                "student_count": row['student_count'] or 0
-            }
-            for row in college_enrollment or []
-        ]
+        # Students by College using Supabase models
+        try:
+            # Try to use the enhanced get_college_stats method
+            college_stats = College.get_college_stats()
+            students_by_college = [
+                {
+                    "college_code": col['code'],
+                    "college_name": col['name'],
+                    "student_count": col.get('student_count', 0)
+                }
+                for col in college_stats or []
+            ]
+        except Exception as e:
+            print(f"Error getting college stats: {e}")
+            # Fallback to manual counting
+            colleges = College.get_all_colleges()
+            students_by_college = []
+            for college in colleges or []:
+                try:
+                    student_count = College.get_student_count(college['code'])
+                    students_by_college.append({
+                        "college_code": college['code'],
+                        "college_name": college['name'],
+                        "student_count": student_count
+                    })
+                except Exception as e:
+                    print(f"Error counting students for college {college['code']}: {e}")
+                    students_by_college.append({
+                        "college_code": college['code'],
+                        "college_name": college['name'],
+                        "student_count": 0
+                    })
 
         return jsonify({
             "students_by_program": students_by_program,
@@ -290,6 +308,7 @@ def get_dashboard_charts():
         }), 200
 
     except Exception as e:
+        print(f"Dashboard charts error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # Note: The 'register', 'me', and 'check' routes from your file are also great,

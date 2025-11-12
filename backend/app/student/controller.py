@@ -1,12 +1,7 @@
 from flask import Blueprint, request, jsonify
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from ..database import (
-    get_all, get_one, insert_record, update_record, delete_record,
-    count_records, execute_raw_sql, paginate_query
-)
 from .models import Student
+from ..program.models import Program
+from ..supabase import get_all, get_one, insert_record, update_record, delete_record, count_records, execute_raw_sql, paginate_query, supabase_manager
 import re
 
 student_bp = Blueprint("student", __name__, url_prefix="/api/students")
@@ -30,8 +25,8 @@ def validate_student_data(data, student_id=None):
         else:
             print(f"✅ Backend validation: Valid format for ID: {sid}")
 
-        # Check if student ID already exists using raw SQL
-        existing = get_one("student", where_clause="id = %s", params=[sid])
+        # Check if student ID already exists using Supabase model
+        existing = Student.get_by_id(sid)
         if existing and (not student_id or existing["id"] != student_id):
             print(f"❌ Backend validation: ID {sid} already exists")
             errors.append("Student ID already exists")
@@ -52,11 +47,11 @@ def validate_student_data(data, student_id=None):
             errors.append("Gender must be Male, Female, Non-binary, Prefer not to say, or Other")
 
     if "course" in data and data["course"]:
-        # Check if program exists using case-insensitive raw SQL with live data
-        course = get_one("program", where_clause="UPPER(code) = %s", params=[data["course"].upper()])
-        if not course:
+        # Check if program exists using Supabase model (case-insensitive)
+        program = Program.get_by_code(data["course"].upper())
+        if not program:
             # Provide helpful error message with available programs
-            available_programs = get_all("program", columns="code, name")
+            available_programs = Program.get_all_programs()
             program_codes = [p["code"] for p in available_programs] if available_programs else []
             if program_codes:
                 errors.append(f"Invalid program code '{data['course']}'. Available programs: {', '.join(program_codes[:5])}{'...' if len(program_codes) > 5 else ''}")
@@ -77,62 +72,61 @@ def get_students():
         sort = request.args.get("sort", "id", type=str)
         order = request.args.get("order", "asc", type=str)
         course_filter = request.args.get("course", "", type=str)
+        year_filter = request.args.get("year", "", type=str)
 
-        # Build WHERE clause for search and filters
-        where_conditions = []
-        params = []
-
+        # Get students using Supabase model
+        students = Student.get_all_students(
+            course_filter=course_filter if course_filter else None,
+            year_filter=int(year_filter) if year_filter else None
+        )
+        
+        # Apply search filter
         if search:
-            search_term = f"%{search}%"
+            search_term = search.lower()
             if filter_field == "all":
-                where_conditions.append("(id ILIKE %s OR firstname ILIKE %s OR lastname ILIKE %s OR course ILIKE %s)")
-                params.extend([search_term, search_term, search_term, search_term])
+                students = [s for s in students if 
+                           search_term in s['id'].lower() or 
+                           search_term in s['firstname'].lower() or 
+                           search_term in s['lastname'].lower() or
+                           search_term in s['course'].lower()]
             elif filter_field == "id":
-                where_conditions.append("id ILIKE %s")
-                params.append(search_term)
+                students = [s for s in students if search_term in s['id'].lower()]
             elif filter_field == "firstname":
-                where_conditions.append("firstname ILIKE %s")
-                params.append(search_term)
+                students = [s for s in students if search_term in s['firstname'].lower()]
             elif filter_field == "lastname":
-                where_conditions.append("lastname ILIKE %s")
-                params.append(search_term)
+                students = [s for s in students if search_term in s['lastname'].lower()]
             elif filter_field == "course":
-                where_conditions.append("course ILIKE %s")
-                params.append(search_term)
+                students = [s for s in students if search_term in s['course'].lower()]
 
-        if course_filter:
-            where_conditions.append("course = %s")
-            params.append(course_filter)
+        # Apply sorting
+        reverse = order.lower() == "desc"
+        if sort == "id":
+            students.sort(key=lambda x: x['id'], reverse=reverse)
+        elif sort == "firstname":
+            students.sort(key=lambda x: x['firstname'], reverse=reverse)
+        elif sort == "lastname":
+            students.sort(key=lambda x: x['lastname'], reverse=reverse)
+        elif sort == "course":
+            students.sort(key=lambda x: x['course'], reverse=reverse)
+        elif sort == "year":
+            students.sort(key=lambda x: x['year'], reverse=reverse)
+        elif sort == "gender":
+            students.sort(key=lambda x: x['gender'], reverse=reverse)
 
-        where_clause = " AND ".join(where_conditions) if where_conditions else None
-
-        # Build ORDER BY clause
-        valid_sort_fields = ["id", "firstname", "lastname", "course", "year", "gender"]
-        if sort in valid_sort_fields:
-            order_direction = "DESC" if order.lower() == "desc" else "ASC"
-            order_clause = f"{sort} {order_direction}"
-        else:
-            order_clause = "id ASC"
-
-        # Get total count for pagination
-        total_count = count_records("student", where_clause=where_clause, params=params if where_clause else None)
-
-        # Build main query
-        query = f"SELECT * FROM student"
-        if where_clause:
-            query += f" WHERE {where_clause}"
-        query += f" ORDER BY {order_clause} LIMIT {per_page} OFFSET {(page - 1) * per_page}"
-
-        # Execute query
-        students = execute_raw_sql(query, params=params, fetch=True)
+        # Apply pagination
+        total = len(students)
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_students = students[start:end]
 
         return jsonify({
-            "items": students or [],
-            "total": total_count,
+            "items": paginated_students,
+            "total": total,
             "page": page,
-            "pages": (total_count + per_page - 1) // per_page if total_count > 0 else 0,
+            "pages": (total + per_page - 1) // per_page if total > 0 else 0,
         }), 200
     except Exception as e:
+        print(f"Error getting students: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -142,8 +136,8 @@ def get_student(student_id):
     try:
         print(f"🔍 Backend: Checking student existence for ID: {student_id}")
 
-        # Get student using raw SQL
-        student = get_one("student", where_clause="id = %s", params=[student_id.upper()])
+        # Get student using Supabase model
+        student = Student.get_by_id(student_id.upper())
 
         if not student:
             print(f"❌ Backend: Student {student_id} not found - returning 404")
@@ -169,19 +163,19 @@ def create_student():
             return jsonify({"errors": errors}), 400
 
         # Get the EXACT program code as stored in database (not uppercase conversion)
-        actual_program = get_one("program", where_clause="UPPER(code) = %s", params=[data["course"].upper()])
+        actual_program = Program.get_by_code(data["course"].upper())
 
-        # Insert student using raw SQL with exact program code
-        student_data = {
-            'id': data["id"].upper().strip(),
-            'firstname': data["firstname"].strip(),
-            'lastname': data["lastname"].strip(),
-            'course': actual_program["code"] if actual_program else data["course"].strip(),  # Use exact stored code
-            'year': int(data["year"]),
-            'gender': data["gender"].capitalize()
-        }
-
-        new_student = insert_record("student", student_data, returning="*")
+        # Create student using Supabase model
+        new_student = Student.create_student(
+            student_id=data["id"].upper().strip(),
+            firstname=data["firstname"].strip(),
+            lastname=data["lastname"].strip(),
+            course=actual_program["code"] if actual_program else data["course"].strip(),  # Use exact stored code
+            year=int(data["year"]),
+            gender=data["gender"].capitalize(),
+            profile_photo_url=data.get("profile_photo_url"),
+            profile_photo_filename=data.get("profile_photo_filename")
+        )
 
         return jsonify({
             "message": "Student created successfully",
@@ -189,6 +183,7 @@ def create_student():
         }), 201
 
     except Exception as e:
+        print(f"Error creating student: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -197,7 +192,7 @@ def update_student(student_id):
     """Update an existing student"""
     try:
         # Check if student exists
-        student = get_one("student", where_clause="id = %s", params=[student_id.upper()])
+        student = Student.get_by_id(student_id.upper())
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
@@ -209,39 +204,23 @@ def update_student(student_id):
         if errors:
             return jsonify({"errors": errors}), 400
 
-        # Update student using raw SQL with exact program code
-        update_data = {}
-        if "id" in data:
-            update_data['id'] = data["id"].upper().strip()
-        if "firstname" in data:
-            update_data['firstname'] = data["firstname"].strip()
-        if "lastname" in data:
-            update_data['lastname'] = data["lastname"].strip()
-        if "course" in data:
-            # Get the EXACT program code as stored in database
-            actual_program = get_one("program", where_clause="UPPER(code) = %s", params=[data["course"].upper()])
-            update_data['course'] = actual_program["code"] if actual_program else data["course"].strip()
-        if "year" in data:
-            update_data['year'] = int(data["year"])
-        if "gender" in data:
-            update_data['gender'] = data["gender"].capitalize()
-
-        if not update_data:
-            return jsonify({"error": "No fields to update"}), 400
-
-        rows_updated = update_record(
-            "student",
-            update_data,
-            "id = %s",
-            params=[student_id.upper()]  # WHERE parameter only
+        # Update student using Supabase model
+        success = Student.update_student(
+            student_id=student_id.upper(),
+            firstname=data.get("firstname", "").strip() if data.get("firstname") else None,
+            lastname=data.get("lastname", "").strip() if data.get("lastname") else None,
+            course=data.get("course", "").upper().strip() if data.get("course") else None,
+            year=int(data["year"]) if data.get("year") else None,
+            gender=data.get("gender", "").capitalize() if data.get("gender") else None,
+            profile_photo_url=data.get("profile_photo_url"),
+            profile_photo_filename=data.get("profile_photo_filename")
         )
 
-        if rows_updated == 0:
+        if not success:
             return jsonify({"error": "Student not found or no changes made"}), 404
 
-        # Get updated student - use new ID if it was changed
-        updated_student_id = update_data.get('id', student_id.upper())
-        updated_student = get_one("student", where_clause="id = %s", params=[updated_student_id])
+        # Get updated student
+        updated_student = Student.get_by_id(student_id.upper())
 
         return jsonify({
             "message": "Student updated successfully",
@@ -249,27 +228,108 @@ def update_student(student_id):
         }), 200
 
     except Exception as e:
+        print(f"Error updating student: {e}")
         return jsonify({"error": str(e)}), 500
 
 
 @student_bp.route("/<student_id>", methods=["DELETE"])
 def delete_student(student_id):
-    """Delete a student"""
+    """Delete a student (includes photo cleanup)"""
     try:
         # Check if student exists
-        student = get_one("student", where_clause="id = %s", params=[student_id.upper()])
+        student = Student.get_by_id(student_id.upper())
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        # Delete student using raw SQL
-        rows_deleted = delete_record("student", "id = %s", params=[student_id.upper()])
+        # Delete student using Supabase model (includes photo cleanup)
+        rows_deleted = Student.delete_student(student_id.upper())
 
-        if rows_deleted == 0:
+        if not rows_deleted:
             return jsonify({"error": "Student not found"}), 404
 
         return jsonify({"message": "Student deleted successfully"}), 200
 
     except Exception as e:
+        print(f"Error deleting student: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@student_bp.route("/<student_id>/photo", methods=["POST"])
+def upload_student_photo(student_id):
+    """Upload profile photo for a student"""
+    try:
+        # Check if student exists
+        student = Student.get_by_id(student_id.upper())
+        if not student:
+            return jsonify({"error": "Student not found"}), 404
+
+        # Check if file is provided
+        if 'photo' not in request.files:
+            return jsonify({"error": "No photo file provided"}), 400
+
+        file = request.files['photo']
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+
+        # Read file data
+        file_data = file.read()
+        
+        # Validate file size (5MB limit)
+        if len(file_data) > 5 * 1024 * 1024:
+            return jsonify({"error": "File too large. Maximum size is 5MB"}), 400
+
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp']
+        if file.content_type not in allowed_types:
+            return jsonify({"error": "Invalid file type. Only JPEG, PNG, and WebP are allowed"}), 400
+
+        # Upload photo using Supabase model
+        result = Student.upload_profile_photo(
+            student_id=student_id.upper(),
+            file_data=file_data,
+            filename=file.filename
+        )
+
+        if result['success']:
+            return jsonify({
+                "message": "Photo uploaded successfully",
+                "photo_url": result['url'],
+                "filename": result['filename']
+            }), 200
+        else:
+            return jsonify({"error": f"Upload failed: {result.get('error', 'Unknown error')}"}), 500
+
+    except Exception as e:
+        print(f"Error uploading student photo: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@student_bp.route("/<student_id>/photo", methods=["DELETE"])
+def delete_student_photo(student_id):
+    """Delete profile photo for a student"""
+    try:
+        # Check if student exists
+        student = Student.get_by_id(student_id.upper())
+        if not student:
+            return jsonify({"error": "Student not found"}), 404
+
+        # Check if student has a photo
+        if not student.get('profile_photo_filename'):
+            return jsonify({"error": "Student has no profile photo"}), 400
+
+        # Delete photo using Supabase model
+        result = Student.delete_profile_photo(
+            student_id=student_id.upper(),
+            filename=student['profile_photo_filename']
+        )
+
+        if result['success']:
+            return jsonify({"message": "Photo deleted successfully"}), 200
+        else:
+            return jsonify({"error": f"Delete failed: {result.get('error', 'Unknown error')}"}), 500
+
+    except Exception as e:
+        print(f"Error deleting student photo: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -280,11 +340,11 @@ def debug_student_id(student_id):
         print(f"🔍 Debug: Checking student ID: {student_id}")
 
         # Check with original case
-        student_original = get_one("student", where_clause="id = %s", params=[student_id])
+        student_original = Student.get_by_id(student_id)
         print(f"🔍 Debug: Original case check result: {student_original}")
 
         # Check with uppercase
-        student_upper = get_one("student", where_clause="id = %s", params=[student_id.upper()])
+        student_upper = Student.get_by_id(student_id.upper())
         print(f"🔍 Debug: Uppercase check result: {student_upper}")
 
         # Test the specific case mentioned by user
@@ -296,7 +356,7 @@ def debug_student_id(student_id):
 
         results = {}
         for test_id in test_cases:
-            exists = get_one("student", where_clause="id = %s", params=[test_id])
+            exists = Student.get_by_id(test_id)
             results[test_id] = exists is not None
 
         return jsonify({
@@ -317,12 +377,12 @@ def debug_student_id(student_id):
 def validate_program_code(program_code):
     """Validate if a program code exists (for real-time validation)"""
     try:
-        # Check if program exists using case-insensitive lookup
-        program = get_one("program", where_clause="UPPER(code) = %s", params=[program_code.upper()])
+        # Check if program exists using Supabase model (case-insensitive)
+        program = Program.get_by_code(program_code.upper())
 
         if not program:
             # Provide available programs for better error messaging
-            available_programs = get_all("program", columns="code, name")
+            available_programs = Program.get_all_programs()
             program_list = [p["code"] for p in available_programs] if available_programs else []
 
             return jsonify({
@@ -348,33 +408,19 @@ def validate_program_code(program_code):
 def get_student_stats():
     """Get student statistics"""
     try:
+        # Get student statistics using Supabase model
+        stats = Student.get_student_stats()
+
         # Get total students count
-        total_students = count_records("student")
-
-        # Get year statistics using raw SQL
-        year_stats_query = """
-            SELECT year, COUNT(*) as count
-            FROM student
-            GROUP BY year
-            ORDER BY year
-        """
-        year_stats = execute_raw_sql(year_stats_query, fetch=True)
-
-        # Get course statistics using raw SQL
-        course_stats_query = """
-            SELECT course, COUNT(*) as count
-            FROM student
-            GROUP BY course
-            ORDER BY course
-        """
-        course_stats = execute_raw_sql(course_stats_query, fetch=True)
+        total_students = Student.count_students()
 
         return jsonify(
             {
                 "total_students": total_students,
-                "by_year": [{"year": stat['year'], "count": stat['count']} for stat in year_stats or []],
-                "by_course": [{"course": stat['course'], "count": stat['count']} for stat in course_stats or []],
+                "by_year": stats.get("by_year", []),
+                "by_course": stats.get("by_course", []),
             }
         ), 200
     except Exception as e:
+        print(f"Error getting student stats: {e}")
         return jsonify({"error": str(e)}), 500

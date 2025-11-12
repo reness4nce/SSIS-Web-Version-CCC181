@@ -1,14 +1,15 @@
-from ..database import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records
+from ..supabase import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records, supabase_manager
 
 class College:
-    """College model using raw SQL operations"""
+    """College model using Supabase operations"""
 
     @staticmethod
     def create_table():
         """Create college table if it doesn't exist"""
         create_table_query = """
             CREATE TABLE IF NOT EXISTS college (
-                code VARCHAR(20) PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
+                code VARCHAR(20) UNIQUE NOT NULL,
                 name VARCHAR(100) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -81,33 +82,61 @@ class College:
 
     @staticmethod
     def get_student_count(college_code):
-        """Get total number of students in a college"""
-        count_query = """
-            SELECT COUNT(DISTINCT s.id) as count
-            FROM student s
-            JOIN program p ON s.course = p.code
-            WHERE p.college = %s
-        """
-        result = execute_raw_sql(count_query, params=[college_code], fetch=True)
-        return result[0]['count'] if result else 0
+        """Get total number of students in a college using Supabase"""
+        try:
+            # Use Supabase RPC function if available
+            result = supabase_manager.get_client().rpc('get_college_stats').eq('college_code', college_code).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]['student_count'] or 0
+        except Exception as e:
+            print(f"Error getting student count via RPC: {e}")
+        
+        # Fallback to direct Supabase query
+        try:
+            # Count students through the program relationship
+            result = supabase_manager.get_client().table('student').select('id', count='exact').eq('college_code', college_code).execute()
+            return result.count or 0
+        except Exception as e:
+            print(f"Error getting student count: {e}")
+            return 0
 
     @staticmethod
     def get_college_stats():
-        """Get college statistics"""
-        stats_query = """
-            SELECT
-                c.id,
-                c.code,
-                c.name,
-                COUNT(DISTINCT p.code) as program_count,
-                COUNT(DISTINCT s.id) as student_count
-            FROM college c
-            LEFT JOIN program p ON c.code = p.college
-            LEFT JOIN student s ON p.code = s.course
-            GROUP BY c.id, c.code, c.name
-            ORDER BY c.code
-        """
-        return execute_raw_sql(stats_query, fetch=True)
+        """Get college statistics using Supabase functions"""
+        try:
+            # Use Supabase RPC function
+            result = supabase_manager.get_client().rpc('get_college_stats').execute()
+            return result.data or []
+        except Exception as e:
+            print(f"Error getting college stats via RPC: {e}")
+        
+        # Fallback to direct Supabase query with join
+        try:
+            result = supabase_manager.get_client().table('college').select('''
+                code,
+                name,
+                programs:program!college(code, name)
+            ''').execute()
+            
+            # Process the results to get proper stats
+            stats = []
+            if result.data:
+                for college in result.data:
+                    program_count = len(college.get('programs', []))
+                    student_count = sum(len(p.get('students', [])) for p in college.get('programs', []))
+                    
+                    stats.append({
+                        'id': college.get('id'),
+                        'code': college['code'],
+                        'name': college['name'],
+                        'program_count': program_count,
+                        'student_count': student_count
+                    })
+            
+            return stats
+        except Exception as e:
+            print(f"Error getting college stats: {e}")
+            return []
 
     def __init__(self, code, name, unique_id=None):
         """Initialize College object"""

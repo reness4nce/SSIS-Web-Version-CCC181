@@ -1,12 +1,8 @@
 from flask import Blueprint, request, jsonify
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from ..database import (
-    get_all, get_one, insert_record, update_record, delete_record,
-    count_records, execute_raw_sql, paginate_query
-)
 from .models import College
+from ..student.models import Student
+from ..program.models import Program
+from ..supabase import get_all, get_one, insert_record, update_record, delete_record, count_records, execute_raw_sql, paginate_query, supabase_manager
 import re
 
 # Create Blueprint for college routes
@@ -34,8 +30,8 @@ def validate_college_data(data, college_code=None, is_update=False):
         if not re.match(r"^[A-Z0-9\-]{2,10}$", code):
             errors.append("College code must be 2-10 characters, letters, numbers, and hyphens only")
 
-        # Check if college code already exists using raw SQL
-        existing = get_one("college", where_clause="code = %s", params=[code])
+        # Check if college code already exists using Supabase model
+        existing = College.get_by_code(code)
         if existing:
             # If this is an update and the existing code is different from current college code, it's a conflict
             if is_update and college_code and existing["code"] != college_code:
@@ -64,98 +60,81 @@ def get_colleges():
         sort = request.args.get("sort", "code", type=str)
         order = request.args.get("order", "asc", type=str)
 
-        # Build WHERE clause for search
-        where_conditions = []
-        params = []
-
+        # Get all colleges using Supabase model
+        colleges = College.get_all_colleges()
+        
+        # Apply search filter
         if search:
-            search_term = f"%{search}%"
+            search_term = search.lower()
             if filter_field == "all":
-                where_conditions.append("(code ILIKE %s OR name ILIKE %s)")
-                params.extend([search_term, search_term])
+                colleges = [c for c in colleges if search_term in c['code'].lower() or search_term in c['name'].lower()]
             elif filter_field == "code":
-                where_conditions.append("code ILIKE %s")
-                params.append(search_term)
+                colleges = [c for c in colleges if search_term in c['code'].lower()]
             elif filter_field == "name":
-                where_conditions.append("name ILIKE %s")
-                params.append(search_term)
+                colleges = [c for c in colleges if search_term in c['name'].lower()]
 
-        where_clause = " AND ".join(where_conditions) if where_conditions else None
+        # Apply sorting
+        reverse = order.lower() == "desc"
+        if sort == "code":
+            colleges.sort(key=lambda x: x['code'], reverse=reverse)
+        elif sort == "name":
+            colleges.sort(key=lambda x: x['name'], reverse=reverse)
 
-        # Build ORDER BY clause
-        valid_sort_fields = ["code", "name"]
-        if sort in valid_sort_fields:
-            order_direction = "DESC" if order.lower() == "desc" else "ASC"
-            order_clause = f"{sort} {order_direction}"
-        else:
-            order_clause = "code ASC"
-
-        # Get total count for pagination
-        total_count = count_records("college", where_clause=where_clause, params=params if where_clause else None)
-
-        # Build main query
-        query = f"SELECT * FROM college"
-        if where_clause:
-            query += f" WHERE {where_clause}"
-        query += f" ORDER BY {order_clause} LIMIT {per_page} OFFSET {(page - 1) * per_page}"
-
-        # Execute query
-        colleges = execute_raw_sql(query, params=params, fetch=True)
+        # Apply pagination
+        total = len(colleges)
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_colleges = colleges[start:end]
 
         return jsonify({
-            "items": colleges or [],
-            "total": total_count,
+            "items": paginated_colleges,
+            "total": total,
             "page": page,
-            "pages": (total_count + per_page - 1) // per_page if total_count > 0 else 0,
+            "pages": (total + per_page - 1) // per_page if total > 0 else 0,
         }), 200
 
     except Exception as e:
+        print(f"Error getting colleges: {e}")
         return jsonify({"error": str(e)}), 500
 
 
 @college_bp.route("/<college_identifier>", methods=["GET"])
 def get_college(college_identifier):
-    """Get a specific college by code or uniqueID"""
+    """Get a specific college by code or ID"""
     try:
         # Get college by code (primary identifier)
-        college = get_one("college", where_clause="code = %s", params=[college_identifier.upper()])
+        college = College.get_by_code(college_identifier.upper())
 
         if not college:
             return jsonify({"error": "College not found"}), 404
 
-        college_dict = {
-            'id': None,  # No ID column in current schema
-            'code': college['code'],
-            'name': college['name']
-        }
-
         # Get programs for this college
-        programs = get_all("program", where_clause="college = %s", params=[college['code']])
+        programs = College.get_programs(college['code'])
 
         # Get student count for each program
         programs_with_count = []
         for program in programs or []:
-            student_count = count_records("student", where_clause="course = %s", params=[program['code']])
+            student_count = Student.count_students(course_filter=program['code'])
             programs_with_count.append({
                 "code": program['code'],
                 "name": program['name'],
                 "student_count": student_count
             })
 
-        college_dict["programs"] = programs_with_count
+        # Get total students in this college
+        total_students = College.get_student_count(college['code'])
 
-        # Get total students in this college using raw SQL
-        total_students_query = """
-            SELECT COUNT(DISTINCT s.id) as count
-            FROM student s
-            JOIN program p ON s.course = p.code
-            WHERE p.college = %s
-        """
-        total_students_result = execute_raw_sql(total_students_query, params=[college['code']], fetch=True)
-        college_dict["total_students"] = total_students_result[0]['count'] if total_students_result else 0
+        college_dict = {
+            'id': college.get('id'),
+            'code': college['code'],
+            'name': college['name'],
+            'programs': programs_with_count,
+            'total_students': total_students
+        }
 
         return jsonify(college_dict), 200
     except Exception as e:
+        print(f"Error getting college: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -171,13 +150,11 @@ def create_college():
         if errors:
             return jsonify({"errors": errors}), 400
 
-        # Insert college using raw SQL
-        college_data = {
-            'code': data["code"].upper().strip(),
-            'name': data["name"].strip()
-        }
-
-        new_college = insert_record("college", college_data, returning="*")
+        # Create college using Supabase model
+        new_college = College.create_college(
+            code=data["code"].upper().strip(),
+            name=data["name"].strip()
+        )
 
         return jsonify({
             "message": "College created successfully",
@@ -185,15 +162,16 @@ def create_college():
         }), 201
 
     except Exception as e:
+        print(f"Error creating college: {e}")
         return jsonify({"error": str(e)}), 500
 
 
 @college_bp.route("/<college_identifier>", methods=["PUT"])
 def update_college(college_identifier):
-    """Update an existing college by code or uniqueID"""
+    """Update an existing college by code or ID"""
     try:
         # Get college by code (primary identifier)
-        college = get_one("college", where_clause="code = %s", params=[college_identifier.upper()])
+        college = College.get_by_code(college_identifier.upper())
 
         if not college:
             return jsonify({"error": "College not found"}), 404
@@ -206,7 +184,7 @@ def update_college(college_identifier):
         if errors:
             return jsonify({"errors": errors}), 400
 
-        # Update college using raw SQL
+        # Update college using Supabase model
         update_data = {}
         if "name" in data:
             update_data['name'] = data["name"].strip()
@@ -217,19 +195,18 @@ def update_college(college_identifier):
             return jsonify({"error": "No fields to update"}), 400
 
         # Update by code (since database uses code as primary identifier)
-        rows_updated = update_record(
-            "college",
-            update_data,
-            "code = %s",
-            params=[college_identifier.upper()]  # WHERE parameter
+        rows_updated = College.update_college(
+            college_code=college_identifier.upper(),
+            name=update_data.get('name'),
+            college_code=update_data.get('code')
         )
 
-        if rows_updated == 0:
+        if not rows_updated:
             return jsonify({"error": "College not found"}), 404
 
         # Get updated college using the new college code if code was updated
         final_college_code = update_data.get('code', college['code'])
-        updated_college = get_one("college", where_clause="code = %s", params=[final_college_code])
+        updated_college = College.get_by_code(final_college_code)
 
         return jsonify({
             "message": "College updated successfully",
@@ -238,6 +215,7 @@ def update_college(college_identifier):
 
     except Exception as e:
         error_message = str(e)
+        print(f"Error updating college: {e}")
         if "violates foreign key constraint" in error_message:
             return jsonify({
                 "error": "Cannot update college code because it has linked programs. Please contact administrator or update programs first."
@@ -248,23 +226,24 @@ def update_college(college_identifier):
 
 @college_bp.route("/<college_identifier>", methods=["DELETE"])
 def delete_college(college_identifier):
-    """Delete a college by code or uniqueID"""
+    """Delete a college by code or ID"""
     try:
         # Get college by code (primary identifier)
-        college = get_one("college", where_clause="code = %s", params=[college_identifier.upper()])
+        college = College.get_by_code(college_identifier.upper())
 
         if not college:
             return jsonify({"error": "College not found"}), 404
 
-        # Delete college using raw SQL (programs will have college field set to NULL)
-        rows_deleted = delete_record("college", "code = %s", params=[college_identifier.upper()])
+        # Delete college using Supabase model (programs will have college field set to NULL)
+        rows_deleted = College.delete_college(college_code=college_identifier.upper())
 
-        if rows_deleted == 0:
+        if not rows_deleted:
             return jsonify({"error": "College not found"}), 404
 
         return jsonify({"message": "College deleted successfully"}), 200
 
     except Exception as e:
+        print(f"Error deleting college: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -272,31 +251,15 @@ def delete_college(college_identifier):
 def get_college_stats():
     """Get college statistics"""
     try:
-        # Get total colleges count
-        total_colleges = count_records("college")
-
-        # Get college statistics with program and student counts using raw SQL
-        stats_query = """
-            SELECT
-                c.code,
-                c.name,
-                COUNT(DISTINCT p.code) as program_count,
-                COUNT(DISTINCT s.id) as student_count
-            FROM college c
-            LEFT JOIN program p ON c.code = p.college
-            LEFT JOIN student s ON p.code = s.course
-            GROUP BY c.code, c.name
-            ORDER BY c.code
-        """
-
-        college_stats = execute_raw_sql(stats_query, fetch=True)
+        # Get college statistics using Supabase model
+        college_stats = College.get_college_stats()
 
         return jsonify(
             {
-                "total_colleges": total_colleges,
+                "total_colleges": len(college_stats) if college_stats else 0,
                 "colleges": [
                     {
-                        "id": None,  # No ID column in current schema
+                        "id": stat.get('id'),
                         "code": stat.get('code', ''),
                         "name": stat.get('name', ''),
                         "program_count": stat.get('program_count', 0) or 0,
@@ -307,4 +270,5 @@ def get_college_stats():
             }
         ), 200
     except Exception as e:
+        print(f"Error getting college stats: {e}")
         return jsonify({"error": str(e)}), 500

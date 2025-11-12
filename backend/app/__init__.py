@@ -33,7 +33,7 @@ def create_app(config=None):
     os_module.makedirs(app.instance_path, exist_ok=True)
 
     # --- Enable CORS for Frontend Communication ---
-    CORS(app, supports_credentials=True, origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"])
+    CORS(app, supports_credentials=True, origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001", "http://localhost:5173", "http://127.0.0.1:5173"])
 
     # --- Register API Blueprints ---
     from .auth.controller import auth_bp

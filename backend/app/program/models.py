@@ -1,8 +1,8 @@
-from ..database import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records
+from ..supabase import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records, supabase_manager
 from ..college.models import College
 
 class Program:
-    """Program model using raw SQL operations"""
+    """Program model using Supabase operations"""
 
     @staticmethod
     def create_table():
@@ -81,32 +81,38 @@ class Program:
 
     @staticmethod
     def get_program_stats():
-        """Get program statistics"""
-        stats_query = """
-            SELECT
-                p.code,
-                p.name,
-                p.college,
-                c.name as college_name,
-                COUNT(s.id) as student_count
-            FROM program p
-            LEFT JOIN college c ON p.college = c.code
-            LEFT JOIN student s ON p.code = s.course
-            GROUP BY p.code, p.name, p.college, c.name
-            ORDER BY p.college, p.code
-        """
-        return execute_raw_sql(stats_query, fetch=True)
+        """Get program statistics using Supabase views and functions"""
+        try:
+            # Try to use Supabase view first
+            result = supabase_manager.get_client().table('program_with_college').select('*').execute()
+            return result.data or []
+        except Exception as e:
+            print(f"Error getting program stats via view: {e}")
+        
+        # Fallback to direct Supabase query
+        try:
+            result = supabase_manager.get_client().from_('program').select('*, college:college!inner(name)').execute()
+            return result.data or []
+        except Exception as e:
+            print(f"Error getting program stats: {e}")
+            return []
 
     @staticmethod
     def get_programs_with_college_info():
-        """Get all programs with college information"""
-        query = """
-            SELECT p.code, p.name, p.college, c.name as college_name
-            FROM program p
-            LEFT JOIN college c ON p.college = c.code
-            ORDER BY c.name, p.name
-        """
-        return execute_raw_sql(query, fetch=True)
+        """Get all programs with college information using Supabase"""
+        try:
+            # Use the view if available
+            result = supabase_manager.get_client().table('program_with_college').select('*').execute()
+            return result.data or []
+        except Exception as e:
+            print(f"Error getting programs with college info: {e}")
+            # Fallback to direct join
+            try:
+                result = supabase_manager.get_client().table('program').select('code, name, college, college_name:college(name)').execute()
+                return result.data or []
+            except Exception as e2:
+                print(f"Error with fallback query: {e2}")
+                return []
 
     def __init__(self, code, name, college):
         """Initialize Program object"""

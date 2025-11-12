@@ -1,8 +1,8 @@
 from werkzeug.security import generate_password_hash, check_password_hash
-from ..database import get_one, insert_record, update_record, delete_record, execute_raw_sql
+from ..supabase import supabase_manager, get_one, insert_record, update_record, delete_record, execute_raw_sql
 
 class User:
-    """User model using raw SQL operations"""
+    """User model using Supabase operations"""
 
     @staticmethod
     def create_table():
@@ -78,7 +78,13 @@ class User:
     @staticmethod
     def get_all_users():
         """Get all users"""
-        return execute_raw_sql("SELECT id, username, email, created_at FROM users ORDER BY username", fetch=True)
+        # For now, fallback to direct Supabase query since execute_raw_sql is limited
+        try:
+            result = supabase_manager.get_client().table('users').select('id, username, email, created_at').order('username').execute()
+            return result.data or []
+        except Exception as e:
+            print(f"Error getting users: {e}")
+            return []
 
     def __init__(self, username, email, password_hash=None, user_id=None):
         """Initialize User object"""
