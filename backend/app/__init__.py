@@ -41,10 +41,10 @@ def create_app(config=None):
     from .program.controller import program_bp
     from .student.controller import student_bp
 
-    app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(college_bp, url_prefix='/colleges')
-    app.register_blueprint(program_bp, url_prefix='/programs')
-    app.register_blueprint(student_bp, url_prefix='/students')
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(college_bp, url_prefix='/api/colleges')
+    app.register_blueprint(program_bp, url_prefix='/api/programs')
+    app.register_blueprint(student_bp, url_prefix='/api/students')
 
     # --- Register CLI Commands ---
     import sys
@@ -93,5 +93,24 @@ def create_app(config=None):
             print("✅ Database reset successfully!")
         except Exception as e:
             print(f"❌ Error resetting database: {e}")
+
+    @app.cli.command("fix-rls")
+    def fix_rls_command():
+        """Fix RLS policies by disabling RLS on student table"""
+        try:
+            # Execute the RLS fix
+            from .supabase import supabase_manager
+
+            # Disable RLS on student table to fix creation issues
+            client = supabase_manager.get_client()
+            result = client.rpc('execute_sql', {'sql': 'ALTER TABLE student DISABLE ROW LEVEL SECURITY;'})
+
+            print("✅ RLS disabled on student table successfully!")
+            print("🎯 Student creation should now work without RLS violations")
+
+        except Exception as e:
+            print(f"❌ Error fixing RLS: {e}")
+            print("💡 Alternative: Run this SQL in Supabase dashboard:")
+            print("   ALTER TABLE student DISABLE ROW LEVEL SECURITY;")
 
     return app

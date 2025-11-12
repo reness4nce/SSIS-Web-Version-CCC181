@@ -33,7 +33,5 @@ class StudentForm(FlaskForm):
     ], choices=[
         ('Male', 'Male'),
         ('Female', 'Female'),
-        ('Non-binary', 'Non-binary'),
-        ('Prefer not to say', 'Prefer not to say'),
         ('Other', 'Other')
     ])

@@ -1,43 +1,49 @@
 from ..supabase import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records, supabase_manager
 from ..program.models import Program
-from typing import Optional
+from datetime import datetime
+import logging
 import os
 import uuid
-from datetime import datetime
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
 
 class Student:
-    """Student model using Supabase operations with profile photo support"""
+    """Student model with Supabase operations"""
 
     @staticmethod
     def create_table():
-        """Create student table if it doesn't exist"""
-        # First ensure program table exists
+        """Create student table"""
         Program.create_table()
 
         create_table_query = """
             CREATE TABLE IF NOT EXISTS student (
-                id VARCHAR(20) PRIMARY KEY,
+                id VARCHAR(20) PRIMARY KEY CHECK (id = UPPER(id)),
                 firstname VARCHAR(50) NOT NULL,
                 lastname VARCHAR(50) NOT NULL,
                 course VARCHAR(20) REFERENCES program(code) ON UPDATE CASCADE ON DELETE SET NULL,
-                year INTEGER NOT NULL,
-                gender VARCHAR(10) NOT NULL,
+                year INTEGER NOT NULL CHECK (year BETWEEN 1 AND 6),
+                gender VARCHAR(20) NOT NULL,
                 profile_photo_url TEXT,
                 profile_photo_filename TEXT,
-                profile_photo_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                profile_photo_updated_at TIMESTAMP WITH TIME ZONE,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         """
         execute_raw_sql(create_table_query, commit=True)
+        logger.info("Student table created/verified")
+
 
     @staticmethod
     def get_by_id(student_id):
         """Get student by ID"""
         return get_one("student", where_clause="id = %s", params=[student_id])
 
+
     @staticmethod
     def get_all_students(limit=None, offset=None, course_filter=None, year_filter=None):
-        """Get all students with optional filters"""
+        """Get all students with optional filters (LEGACY - for backward compatibility)"""
         where_conditions = []
         params = []
 
@@ -50,82 +56,43 @@ class Student:
             params.append(year_filter)
 
         where_clause = " AND ".join(where_conditions) if where_conditions else None
-
         return get_all("student", where_clause=where_clause, params=params, limit=limit, offset=offset)
 
-    @staticmethod
-    def create_student(student_id, firstname, lastname, course, year, gender, profile_photo_url=None, profile_photo_filename=None):
-        """Create a new student with optional profile photo"""
-        student_data = {
-            'id': student_id,
-            'firstname': firstname,
-            'lastname': lastname,
-            'course': course,
-            'year': year,
-            'gender': gender,
-            'profile_photo_url': profile_photo_url,
-            'profile_photo_filename': profile_photo_filename,
-            'profile_photo_updated_at': datetime.utcnow().isoformat()
-        }
-        return insert_record("student", student_data, returning="*")
 
     @staticmethod
-    def update_student(student_id, firstname=None, lastname=None, course=None, year=None, gender=None, profile_photo_url=None, profile_photo_filename=None):
-        """Update student information including profile photo"""
-        update_data = {}
-        if firstname:
-            update_data['firstname'] = firstname
-        if lastname:
-            update_data['lastname'] = lastname
-        if course:
-            update_data['course'] = course
-        if year:
-            update_data['year'] = year
-        if gender:
-            update_data['gender'] = gender
-        if profile_photo_url is not None:
-            update_data['profile_photo_url'] = profile_photo_url
-        if profile_photo_filename is not None:
-            update_data['profile_photo_filename'] = profile_photo_filename
-            update_data['profile_photo_updated_at'] = datetime.utcnow().isoformat()
+    def get_all_students_filtered(where_clause=None, params=None, order_by="id", order_direction="ASC", limit=None, offset=None):
+        """
+        Get filtered students with sorting (HIGH PRIORITY #3)
+        Moves filtering to database level for better performance
+        """
+        try:
+            # Validate order_by to prevent SQL injection
+            valid_columns = ['id', 'firstname', 'lastname', 'course', 'year', 'gender', 'created_at']
+            if order_by not in valid_columns:
+                logger.warning(f"Invalid order_by column: {order_by}, defaulting to 'id'")
+                order_by = 'id'
 
-        if not update_data:
-            return None
+            # Validate order direction
+            if order_direction.upper() not in ['ASC', 'DESC']:
+                logger.warning(f"Invalid order direction: {order_direction}, defaulting to 'ASC'")
+                order_direction = 'ASC'
 
-        return update_record(
-            "student",
-            update_data,
-            "id = %s",
-            params={**update_data, 'id': student_id}
-        )
+            order_clause = f"{order_by} {order_direction}"
 
-    @staticmethod
-    def delete_student(student_id):
-        """Delete a student (also delete associated photo from storage)"""
-        # First get student info to check for photo
-        student = Student.get_by_id(student_id)
-        
-        # Delete student record
-        result = delete_record("student", "id = %s", params=[student_id])
-        
-        # If student had a photo, delete it from storage
-        if student and student.get('profile_photo_url'):
-            try:
-                Student.delete_profile_photo(student_id, student['profile_photo_filename'])
-            except Exception as e:
-                print(f"Warning: Could not delete profile photo: {e}")
-        
-        return result
+            logger.debug(f"Fetching students: where={where_clause}, order={order_clause}, limit={limit}, offset={offset}")
 
-    @staticmethod
-    def get_students_by_course(course):
-        """Get all students in a specific course"""
-        return get_all("student", where_clause="course = %s", params=[course])
+            return get_all(
+                "student",
+                where_clause=where_clause,
+                params=params,
+                order_by=order_clause,
+                limit=limit,
+                offset=offset
+            )
+        except Exception as e:
+            logger.error(f"Error fetching filtered students: {e}", exc_info=True)
+            return []
 
-    @staticmethod
-    def get_students_by_year(year):
-        """Get all students in a specific year"""
-        return get_all("student", where_clause="year = %s", params=[year])
 
     @staticmethod
     def count_students(course_filter=None, year_filter=None):
@@ -142,8 +109,122 @@ class Student:
             params.append(year_filter)
 
         where_clause = " AND ".join(where_conditions) if where_conditions else None
-
         return count_records("student", where_clause=where_clause, params=params)
+
+
+    @staticmethod
+    def count_students_filtered(where_clause=None, params=None):
+        """Count students matching filter (HIGH PRIORITY #3)"""
+        try:
+            return count_records("student", where_clause=where_clause, params=params)
+        except Exception as e:
+            logger.error(f"Error counting filtered students: {e}", exc_info=True)
+            return 0
+
+
+    @staticmethod
+    def create_student(student_id, firstname, lastname, course, year, gender, profile_photo_url=None, profile_photo_filename=None):
+        """Create new student"""
+        try:
+            student_data = {
+                'id': student_id.upper(),
+                'firstname': firstname,
+                'lastname': lastname,
+                'course': course,
+                'year': year,
+                'gender': gender,
+                'profile_photo_url': profile_photo_url,
+                'profile_photo_filename': profile_photo_filename,
+                'profile_photo_updated_at': datetime.utcnow().isoformat() if profile_photo_url else None
+            }
+            result = insert_record("student", student_data, returning="*")
+            logger.info(f"Student created: {student_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Error creating student: {e}", exc_info=True)
+            raise
+
+
+    @staticmethod
+    def update_student(student_id, firstname=None, lastname=None, course=None, year=None, gender=None, profile_photo_url=None, profile_photo_filename=None):
+        """Update student information"""
+        try:
+            update_data = {}
+            if firstname:
+                update_data['firstname'] = firstname
+            if lastname:
+                update_data['lastname'] = lastname
+            if course:
+                update_data['course'] = course
+            if year:
+                update_data['year'] = year
+            if gender:
+                update_data['gender'] = gender
+            if profile_photo_url is not None:
+                update_data['profile_photo_url'] = profile_photo_url
+            if profile_photo_filename is not None:
+                update_data['profile_photo_filename'] = profile_photo_filename
+                update_data['profile_photo_updated_at'] = datetime.utcnow().isoformat()
+
+            if not update_data:
+                logger.warning(f"No data to update for student: {student_id}")
+                return None
+
+            logger.debug(f"Updating student {student_id}: {update_data}")
+
+            result = update_record(
+                "student",
+                update_data,
+                "id = %s",
+                params=[student_id]
+            )
+            
+            logger.info(f"Student updated: {student_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Error updating student: {e}", exc_info=True)
+            raise
+
+
+    @staticmethod
+    def delete_student(student_id):
+        """Delete student with photo cleanup (HIGH PRIORITY - proper order)"""
+        try:
+            # Get student first
+            student = Student.get_by_id(student_id)
+            if not student:
+                logger.warning(f"Student not found for deletion: {student_id}")
+                return 0
+
+            # Delete photo FIRST (less critical if fails)
+            if student.get('profile_photo_filename'):
+                try:
+                    Student.delete_profile_photo(student_id, student['profile_photo_filename'])
+                    logger.info(f"Photo deleted for student: {student_id}")
+                except Exception as e:
+                    logger.warning(f"Could not delete photo for {student_id}: {e}")
+
+            # Then delete student record
+            result = delete_record("student", "id = %s", params=[student_id])
+            logger.info(f"Student deleted: {student_id}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error deleting student: {e}", exc_info=True)
+            raise
+
+
+    @staticmethod
+    def get_students_by_course(course):
+        """Get students by course"""
+        return get_all("student", where_clause="course = %s", params=[course])
+
+
+    @staticmethod
+    def get_students_by_year(year):
+        """Get students by year"""
+        return get_all("student", where_clause="year = %s", params=[year])
+
 
     @staticmethod
     def upload_profile_photo(student_id, file_data, filename):
@@ -152,68 +233,75 @@ class Student:
             # Generate unique filename
             file_extension = os.path.splitext(filename)[1].lower()
             unique_filename = f"{student_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{file_extension}"
-            
+
+            logger.debug(f"Uploading photo: {unique_filename}")
+
             # Upload to Supabase Storage
-            bucket = supabase_manager.get_client().storage.from_('student-photos')
+            bucket = supabase_manager.get_service_role_client().storage.from_('student-photos')
             response = bucket.upload(unique_filename, file_data, {
-                'content-type': 'image/jpeg'
+                'content-type': f'image/{file_extension[1:]}'
             })
-            
-            if response.data:
+
+            if response:
                 # Get public URL
                 public_url = bucket.get_public_url(unique_filename)
-                
-                # Update student record with photo info
+
+                # Update student record
                 Student.update_student(
                     student_id,
                     profile_photo_url=public_url,
                     profile_photo_filename=unique_filename
                 )
-                
+
+                logger.info(f"Photo uploaded: {unique_filename}")
+
                 return {
                     'success': True,
                     'url': public_url,
                     'filename': unique_filename
                 }
             else:
+                logger.error("Photo upload failed - no response")
                 return {'success': False, 'error': 'Upload failed'}
-                
+
         except Exception as e:
-            print(f"Error uploading profile photo: {e}")
+            logger.error(f"Error uploading photo: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
+
 
     @staticmethod
     def delete_profile_photo(student_id, filename):
         """Delete profile photo from Supabase Storage"""
         try:
-            bucket = supabase_manager.get_client().storage.from_('student-photos')
+            logger.debug(f"Deleting photo: {filename}")
+
+            bucket = supabase_manager.get_service_role_client().storage.from_('student-photos')
             response = bucket.remove([filename])
-            
-            if response.data:
-                # Update student record to remove photo info
+
+            if response:
+                # Update student record
                 Student.update_student(
                     student_id,
                     profile_photo_url=None,
                     profile_photo_filename=None
                 )
+
+                logger.info(f"Photo deleted: {filename}")
                 return {'success': True}
             else:
+                logger.error("Photo deletion failed - no response")
                 return {'success': False, 'error': 'Delete failed'}
-                
+
         except Exception as e:
-            print(f"Error deleting profile photo: {e}")
+            logger.error(f"Error deleting photo: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
-    @staticmethod
-    def get_student_with_photo(student_id):
-        """Get student with full photo information"""
-        return get_one("student", where_clause="id = %s", params=[student_id])
 
     @staticmethod
     def get_student_stats():
-        """Get student statistics using Supabase functions"""
+        """Get student statistics"""
         try:
-            # Use Supabase RPC function or fallback to direct queries
+            # Try RPC function first
             result = supabase_manager.get_client().rpc('get_student_stats').execute()
             if result.data:
                 return {
@@ -221,27 +309,25 @@ class Student:
                     'by_course': result.data.get('by_course', [])
                 }
         except Exception as e:
-            print(f"Error getting student stats via RPC: {e}")
-        
-        # Fallback to direct Supabase queries
+            logger.debug(f"RPC stats not available, using fallback: {e}")
+
+        # Fallback to direct queries
         try:
-            # Get year distribution
             year_stats = supabase_manager.get_client().table('student').select('year, count:id').group('year').execute()
-            
-            # Get course distribution  
             course_stats = supabase_manager.get_client().table('student').select('course, count:id').group('course').execute()
-            
+
             return {
-                'by_year': [{'year': stat['year'], 'count': stat['count']} for stat in year_stats.data or []],
-                'by_course': [{'course': stat['course'], 'count': stat['count']} for stat in course_stats.data or []]
+                'by_year': [{'year': s['year'], 'count': s['count']} for s in year_stats.data or []],
+                'by_course': [{'course': s['course'], 'count': s['count']} for s in course_stats.data or []]
             }
         except Exception as e:
-            print(f"Error getting student stats: {e}")
+            logger.error(f"Error getting stats: {e}", exc_info=True)
             return {'by_year': [], 'by_course': []}
 
+
     def __init__(self, student_id, firstname, lastname, course, year, gender, profile_photo_url=None, profile_photo_filename=None):
-        """Initialize Student object with photo support"""
-        self.id = student_id
+        """Initialize Student object"""
+        self.id = student_id.upper()
         self.firstname = firstname
         self.lastname = lastname
         self.course = course
@@ -249,29 +335,10 @@ class Student:
         self.gender = gender
         self.profile_photo_url = profile_photo_url
         self.profile_photo_filename = profile_photo_filename
-        self.profile_photo_updated_at = None
 
-    def save(self):
-        """Save student to database"""
-        if hasattr(self, '_id') and self._id:
-            # Update existing student
-            return Student.update_student(
-                self.id, self.firstname, self.lastname, self.course, 
-                self.year, self.gender, self.profile_photo_url, self.profile_photo_filename
-            )
-        else:
-            # Create new student
-            result = Student.create_student(
-                self.id, self.firstname, self.lastname, self.course, 
-                self.year, self.gender, self.profile_photo_url, self.profile_photo_filename
-            )
-            if result:
-                self._id = result['id']
-                return True
-            return False
 
     def to_dict(self):
-        """Convert student to dictionary"""
+        """Convert to dictionary"""
         return {
             'id': self.id,
             'firstname': self.firstname,
@@ -280,9 +347,9 @@ class Student:
             'year': self.year,
             'gender': self.gender,
             'profile_photo_url': self.profile_photo_url,
-            'profile_photo_filename': self.profile_photo_filename,
-            'profile_photo_updated_at': self.profile_photo_updated_at
+            'profile_photo_filename': self.profile_photo_filename
         }
+
 
     def __repr__(self):
         return f'<Student {self.firstname} {self.lastname} ({self.id})>'

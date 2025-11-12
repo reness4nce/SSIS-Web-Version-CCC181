@@ -1,13 +1,45 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
+from functools import lru_cache
+import logging
+import re
+import os
+
 from .models import Student
 from ..program.models import Program
-from ..supabase import get_all, get_one, insert_record, update_record, delete_record, count_records, execute_raw_sql, paginate_query, supabase_manager
-import re
+from ..auth.controller import require_auth
 
-student_bp = Blueprint("student", __name__, url_prefix="/api/students")
+# Configure logging
+logger = logging.getLogger(__name__)
 
+student_bp = Blueprint("student", __name__)
+
+# Constants 
+MAX_PAGE_SIZE = 100
+DEFAULT_PAGE_SIZE = 10
+MAX_FILE_SIZE_MB = 5
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+ALLOWED_IMAGE_TYPES = ['jpeg', 'png', 'webp']
+
+
+# ============================================
+# CACHING 
+# ============================================
+@lru_cache(maxsize=128)
+def get_valid_programs_cached():
+    """Cache valid programs for faster validation"""
+    try:
+        programs = Program.get_all_programs()
+        return {p['code'].upper(): p for p in programs}
+    except Exception as e:
+        logger.error(f"Error caching programs: {e}")
+        return {}
+
+
+# ============================================
+# VALIDATION
+# ============================================
 def validate_student_data(data, student_id=None):
-    """Validate student data with live program data"""
+    """Validate student data with cached program validation"""
     errors = []
 
     required_fields = ["id", "firstname", "lastname", "course", "year", "gender"]
@@ -15,24 +47,22 @@ def validate_student_data(data, student_id=None):
         if field not in data or not data[field]:
             errors.append(f"{field} is required")
 
+    # Validate student ID format
     if "id" in data and data["id"]:
         sid = data["id"].upper()
-        print(f"🔍 Backend validation: Checking ID format for: {sid}")
+        logger.debug(f"Validating student ID: {sid}")
 
         if not re.match(r"^[0-9]{4}-[0-9]{4}$", sid):
-            print(f"❌ Backend validation: Invalid format for ID: {sid}")
+            logger.warning(f"Invalid ID format: {sid}")
             errors.append("Student ID must follow format YYYY-NNNN (e.g., 2024-0001)")
         else:
-            print(f"✅ Backend validation: Valid format for ID: {sid}")
+            # Check if ID already exists
+            existing = Student.get_by_id(sid)
+            if existing and (not student_id or existing["id"] != student_id):
+                logger.warning(f"Duplicate student ID: {sid}")
+                errors.append("Student ID already exists")
 
-        # Check if student ID already exists using Supabase model
-        existing = Student.get_by_id(sid)
-        if existing and (not student_id or existing["id"] != student_id):
-            print(f"❌ Backend validation: ID {sid} already exists")
-            errors.append("Student ID already exists")
-        else:
-            print(f"✅ Backend validation: ID {sid} is available")
-
+    # Validate year
     if "year" in data and data["year"]:
         try:
             year = int(data["year"])
@@ -41,32 +71,37 @@ def validate_student_data(data, student_id=None):
         except ValueError:
             errors.append("Year must be a number")
 
+    # Validate gender
     if "gender" in data and data["gender"]:
         valid_genders = ["male", "female", "non-binary", "prefer not to say", "other"]
         if data["gender"].lower() not in valid_genders:
             errors.append("Gender must be Male, Female, Non-binary, Prefer not to say, or Other")
 
+    # Validate program (CACHED - MEDIUM PRIORITY #8)
     if "course" in data and data["course"]:
-        # Check if program exists using Supabase model (case-insensitive)
-        program = Program.get_by_code(data["course"].upper())
-        if not program:
-            # Provide helpful error message with available programs
-            available_programs = Program.get_all_programs()
-            program_codes = [p["code"] for p in available_programs] if available_programs else []
-            if program_codes:
-                errors.append(f"Invalid program code '{data['course']}'. Available programs: {', '.join(program_codes[:5])}{'...' if len(program_codes) > 5 else ''}")
-            else:
-                errors.append("Invalid program code and no programs are currently available")
+        valid_programs = get_valid_programs_cached()
+        course_upper = data["course"].upper()
+        
+        if course_upper not in valid_programs:
+            available = list(valid_programs.keys())[:5]
+            error_msg = f"Invalid program code '{data['course']}'"
+            if available:
+                error_msg += f". Available: {', '.join(available)}..."
+            errors.append(error_msg)
 
     return errors
 
 
+# ============================================
+# STUDENT CRUD ENDPOINTS
+# ============================================
 @student_bp.route("", methods=["GET"])
+@require_auth
 def get_students():
-    """Get all students with pagination, search, and sorting"""
+    """Get students with database-level filterin"""
     try:
         page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 10, type=int), 100)
+        per_page = min(request.args.get("per_page", DEFAULT_PAGE_SIZE, type=int), MAX_PAGE_SIZE)
         search = request.args.get("search", "", type=str)
         filter_field = request.args.get("filter", "all", type=str)
         sort = request.args.get("sort", "id", type=str)
@@ -74,85 +109,82 @@ def get_students():
         course_filter = request.args.get("course", "", type=str)
         year_filter = request.args.get("year", "", type=str)
 
-        # Get students using Supabase model
-        students = Student.get_all_students(
-            course_filter=course_filter if course_filter else None,
-            year_filter=int(year_filter) if year_filter else None
-        )
-        
-        # Apply search filter
+        logger.debug(f"Get students: page={page}, search='{search}', filter={filter_field}")
+
+        # Build WHERE clause for database filtering
+        where_conditions = []
+        params = []
+
+        # Course filter
+        if course_filter:
+            where_conditions.append("course = %s")
+            params.append(course_filter)
+
+        # Year filter
+        if year_filter:
+            where_conditions.append("year = %s")
+            params.append(int(year_filter))
+
+        # Search filter
         if search:
-            search_term = search.lower()
+            search_term = f"%{search}%"
             if filter_field == "all":
-                students = [s for s in students if 
-                           search_term in s['id'].lower() or 
-                           search_term in s['firstname'].lower() or 
-                           search_term in s['lastname'].lower() or
-                           search_term in s['course'].lower()]
-            elif filter_field == "id":
-                students = [s for s in students if search_term in s['id'].lower()]
-            elif filter_field == "firstname":
-                students = [s for s in students if search_term in s['firstname'].lower()]
-            elif filter_field == "lastname":
-                students = [s for s in students if search_term in s['lastname'].lower()]
-            elif filter_field == "course":
-                students = [s for s in students if search_term in s['course'].lower()]
+                where_conditions.append("(id ILIKE %s OR firstname ILIKE %s OR lastname ILIKE %s OR course ILIKE %s)")
+                params.extend([search_term] * 4)
+            else:
+                where_conditions.append(f"{filter_field} ILIKE %s")
+                params.append(search_term)
 
-        # Apply sorting
-        reverse = order.lower() == "desc"
-        if sort == "id":
-            students.sort(key=lambda x: x['id'], reverse=reverse)
-        elif sort == "firstname":
-            students.sort(key=lambda x: x['firstname'], reverse=reverse)
-        elif sort == "lastname":
-            students.sort(key=lambda x: x['lastname'], reverse=reverse)
-        elif sort == "course":
-            students.sort(key=lambda x: x['course'], reverse=reverse)
-        elif sort == "year":
-            students.sort(key=lambda x: x['year'], reverse=reverse)
-        elif sort == "gender":
-            students.sort(key=lambda x: x['gender'], reverse=reverse)
+        where_clause = " AND ".join(where_conditions) if where_conditions else None
 
-        # Apply pagination
-        total = len(students)
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated_students = students[start:end]
+        # Get total count
+        total = Student.count_students_filtered(where_clause, params)
+
+        # Get paginated data with sorting
+        students = Student.get_all_students_filtered(
+            where_clause=where_clause,
+            params=params,
+            order_by=sort,
+            order_direction=order.upper(),
+            limit=per_page,
+            offset=(page - 1) * per_page
+        )
 
         return jsonify({
-            "items": paginated_students,
+            "items": students,
             "total": total,
             "page": page,
             "pages": (total + per_page - 1) // per_page if total > 0 else 0,
         }), 200
+
     except Exception as e:
-        print(f"Error getting students: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error getting students: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch students"}), 500
 
 
 @student_bp.route("/<student_id>", methods=["GET"])
+@require_auth
 def get_student(student_id):
-    """Get a specific student by ID"""
+    """Get specific student by ID"""
     try:
-        print(f"🔍 Backend: Checking student existence for ID: {student_id}")
-
-        # Get student using Supabase model
+        logger.debug(f"Fetching student: {student_id}")
         student = Student.get_by_id(student_id.upper())
 
         if not student:
-            print(f"❌ Backend: Student {student_id} not found - returning 404")
+            logger.warning(f"Student not found: {student_id}")
             return jsonify({"error": "Student not found"}), 404
 
-        print(f"✅ Backend: Student {student_id} found - returning 200")
         return jsonify(student), 200
+
     except Exception as e:
-        print(f"❌ Backend: Error checking student {student_id}: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error fetching student {student_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch student"}), 500
 
 
 @student_bp.route("", methods=["POST"])
+@require_auth
 def create_student():
-    """Create a new student"""
+    """Create new student"""
     try:
         data = request.get_json()
         if not data:
@@ -160,22 +192,26 @@ def create_student():
 
         errors = validate_student_data(data)
         if errors:
+            logger.warning(f"Student creation validation failed: {errors}")
             return jsonify({"errors": errors}), 400
 
-        # Get the EXACT program code as stored in database (not uppercase conversion)
-        actual_program = Program.get_by_code(data["course"].upper())
+        # Get exact program code
+        valid_programs = get_valid_programs_cached()
+        course_upper = data["course"].upper()
+        actual_program = valid_programs.get(course_upper)
 
-        # Create student using Supabase model
         new_student = Student.create_student(
             student_id=data["id"].upper().strip(),
             firstname=data["firstname"].strip(),
             lastname=data["lastname"].strip(),
-            course=actual_program["code"] if actual_program else data["course"].strip(),  # Use exact stored code
+            course=actual_program["code"] if actual_program else course_upper,
             year=int(data["year"]),
             gender=data["gender"].capitalize(),
             profile_photo_url=data.get("profile_photo_url"),
             profile_photo_filename=data.get("profile_photo_filename")
         )
+
+        logger.info(f"Student created: {new_student['id']}")
 
         return jsonify({
             "message": "Student created successfully",
@@ -183,15 +219,15 @@ def create_student():
         }), 201
 
     except Exception as e:
-        print(f"Error creating student: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error creating student: {e}", exc_info=True)
+        return jsonify({"error": "Failed to create student"}), 500
 
 
 @student_bp.route("/<student_id>", methods=["PUT"])
+@require_auth
 def update_student(student_id):
-    """Update an existing student"""
+    """Update existing student"""
     try:
-        # Check if student exists
         student = Student.get_by_id(student_id.upper())
         if not student:
             return jsonify({"error": "Student not found"}), 404
@@ -202,15 +238,25 @@ def update_student(student_id):
 
         errors = validate_student_data(data, student_id.upper())
         if errors:
+            logger.warning(f"Student update validation failed: {errors}")
             return jsonify({"errors": errors}), 400
 
-        # Update student using Supabase model
+        # Handle year conversion
+        year_value = None
+        if data.get("year"):
+            try:
+                year_value = int(data["year"])
+            except (ValueError, TypeError):
+                year_value = None
+
+        logger.debug(f"Updating student: {student_id.upper()}")
+
         success = Student.update_student(
             student_id=student_id.upper(),
             firstname=data.get("firstname", "").strip() if data.get("firstname") else None,
             lastname=data.get("lastname", "").strip() if data.get("lastname") else None,
             course=data.get("course", "").upper().strip() if data.get("course") else None,
-            year=int(data["year"]) if data.get("year") else None,
+            year=year_value,
             gender=data.get("gender", "").capitalize() if data.get("gender") else None,
             profile_photo_url=data.get("profile_photo_url"),
             profile_photo_filename=data.get("profile_photo_filename")
@@ -219,8 +265,8 @@ def update_student(student_id):
         if not success:
             return jsonify({"error": "Student not found or no changes made"}), 404
 
-        # Get updated student
         updated_student = Student.get_by_id(student_id.upper())
+        logger.info(f"Student updated: {student_id.upper()}")
 
         return jsonify({
             "message": "Student updated successfully",
@@ -228,42 +274,44 @@ def update_student(student_id):
         }), 200
 
     except Exception as e:
-        print(f"Error updating student: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error updating student: {e}", exc_info=True)
+        return jsonify({"error": "Failed to update student"}), 500
 
 
 @student_bp.route("/<student_id>", methods=["DELETE"])
+@require_auth
 def delete_student(student_id):
-    """Delete a student (includes photo cleanup)"""
+    """Delete student"""
     try:
-        # Check if student exists
         student = Student.get_by_id(student_id.upper())
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        # Delete student using Supabase model (includes photo cleanup)
         rows_deleted = Student.delete_student(student_id.upper())
 
         if not rows_deleted:
             return jsonify({"error": "Student not found"}), 404
 
+        logger.info(f"Student deleted: {student_id.upper()}")
         return jsonify({"message": "Student deleted successfully"}), 200
 
     except Exception as e:
-        print(f"Error deleting student: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error deleting student: {e}", exc_info=True)
+        return jsonify({"error": "Failed to delete student"}), 500
 
 
+# ============================================
+# PHOTO MANAGEMENT 
+# ============================================
 @student_bp.route("/<student_id>/photo", methods=["POST"])
+@require_auth
 def upload_student_photo(student_id):
-    """Upload profile photo for a student"""
+    """Upload student photo with proper validation"""
     try:
-        # Check if student exists
         student = Student.get_by_id(student_id.upper())
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        # Check if file is provided
         if 'photo' not in request.files:
             return jsonify({"error": "No photo file provided"}), 400
 
@@ -273,17 +321,21 @@ def upload_student_photo(student_id):
 
         # Read file data
         file_data = file.read()
-        
-        # Validate file size (5MB limit)
-        if len(file_data) > 5 * 1024 * 1024:
-            return jsonify({"error": "File too large. Maximum size is 5MB"}), 400
 
-        # Validate file type
-        allowed_types = ['image/jpeg', 'image/png', 'image/webp']
-        if file.content_type not in allowed_types:
-            return jsonify({"error": "Invalid file type. Only JPEG, PNG, and WebP are allowed"}), 400
+        # Validate file size (HIGH PRIORITY #2)
+        if len(file_data) > MAX_FILE_SIZE_BYTES:
+            logger.warning(f"File too large: {len(file_data)} bytes")
+            return jsonify({"error": f"File too large. Maximum size is {MAX_FILE_SIZE_MB}MB"}), 400
 
-        # Upload photo using Supabase model
+        # Validate image format using basic file extension check (simplified due to imghdr removal)
+        filename_lower = file.filename.lower()
+        if not any(filename_lower.endswith(ext) for ext in ALLOWED_IMAGE_TYPES):
+            logger.warning(f"Invalid file extension: {file.filename}")
+            return jsonify({"error": f"Invalid image format. Allowed formats: {', '.join(ALLOWED_IMAGE_TYPES).upper()}"}), 400
+
+        logger.info(f"Uploading photo for student: {student_id.upper()}")
+
+        # Upload photo
         result = Student.upload_profile_photo(
             student_id=student_id.upper(),
             file_data=file_data,
@@ -291,136 +343,118 @@ def upload_student_photo(student_id):
         )
 
         if result['success']:
+            logger.info(f"Photo uploaded successfully: {student_id.upper()}")
             return jsonify({
                 "message": "Photo uploaded successfully",
                 "photo_url": result['url'],
                 "filename": result['filename']
             }), 200
         else:
+            logger.error(f"Photo upload failed: {result.get('error')}")
             return jsonify({"error": f"Upload failed: {result.get('error', 'Unknown error')}"}), 500
 
     except Exception as e:
-        print(f"Error uploading student photo: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error uploading photo: {e}", exc_info=True)
+        return jsonify({"error": "Failed to upload photo"}), 500
 
 
 @student_bp.route("/<student_id>/photo", methods=["DELETE"])
+@require_auth
 def delete_student_photo(student_id):
-    """Delete profile photo for a student"""
+    """Delete student photo"""
     try:
-        # Check if student exists
         student = Student.get_by_id(student_id.upper())
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        # Check if student has a photo
         if not student.get('profile_photo_filename'):
             return jsonify({"error": "Student has no profile photo"}), 400
 
-        # Delete photo using Supabase model
         result = Student.delete_profile_photo(
             student_id=student_id.upper(),
             filename=student['profile_photo_filename']
         )
 
         if result['success']:
+            logger.info(f"Photo deleted: {student_id.upper()}")
             return jsonify({"message": "Photo deleted successfully"}), 200
         else:
+            logger.error(f"Photo delete failed: {result.get('error')}")
             return jsonify({"error": f"Delete failed: {result.get('error', 'Unknown error')}"}), 500
 
     except Exception as e:
-        print(f"Error deleting student photo: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error deleting photo: {e}", exc_info=True)
+        return jsonify({"error": "Failed to delete photo"}), 500
 
 
-@student_bp.route("/debug-id/<student_id>", methods=["GET"])
-def debug_student_id(student_id):
-    """Debug endpoint to check student ID existence"""
-    try:
-        print(f"🔍 Debug: Checking student ID: {student_id}")
-
-        # Check with original case
-        student_original = Student.get_by_id(student_id)
-        print(f"🔍 Debug: Original case check result: {student_original}")
-
-        # Check with uppercase
-        student_upper = Student.get_by_id(student_id.upper())
-        print(f"🔍 Debug: Uppercase check result: {student_upper}")
-
-        # Test the specific case mentioned by user
-        test_cases = [
-            student_id,
-            student_id.upper(),
-            student_id.lower()
-        ]
-
-        results = {}
-        for test_id in test_cases:
-            exists = Student.get_by_id(test_id)
-            results[test_id] = exists is not None
-
-        return jsonify({
-            "id_checked": student_id,
-            "test_cases": results,
-            "all_cases_available": all(not exists for exists in results.values()),
-            "original_case_exists": student_original is not None,
-            "uppercase_exists": student_upper is not None,
-            "original_case_result": student_original,
-            "uppercase_result": student_upper
-        }), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
+# ============================================
+# UTILITY ENDPOINTS
+# ============================================
 @student_bp.route("/validate-program/<program_code>", methods=["GET"])
+@require_auth
 def validate_program_code(program_code):
-    """Validate if a program code exists (for real-time validation)"""
+    """Validate program code"""
     try:
-        # Check if program exists using Supabase model (case-insensitive)
-        program = Program.get_by_code(program_code.upper())
+        valid_programs = get_valid_programs_cached()
+        course_upper = program_code.upper()
 
-        if not program:
-            # Provide available programs for better error messaging
-            available_programs = Program.get_all_programs()
-            program_list = [p["code"] for p in available_programs] if available_programs else []
-
+        if course_upper not in valid_programs:
+            program_list = list(valid_programs.keys())
             return jsonify({
                 "valid": False,
-                "message": f"Program '{program_code}' not found. Available programs: {', '.join(program_list[:5])}{'...' if len(program_list) > 5 else ''}",
+                "message": f"Program '{program_code}' not found",
                 "available_programs": program_list
             }), 200
 
-        # Return program details with EXACT stored code (not transformed)
+        program = valid_programs[course_upper]
         return jsonify({
             "valid": True,
             "program": {
-                "code": program["code"],  # Use exact code as stored in database
+                "code": program["code"],
                 "name": program["name"]
             }
         }), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error validating program: {e}", exc_info=True)
+        return jsonify({"error": "Failed to validate program"}), 500
 
 
 @student_bp.route("/stats", methods=["GET"])
+@require_auth
 def get_student_stats():
     """Get student statistics"""
     try:
-        # Get student statistics using Supabase model
         stats = Student.get_student_stats()
-
-        # Get total students count
         total_students = Student.count_students()
 
-        return jsonify(
-            {
-                "total_students": total_students,
-                "by_year": stats.get("by_year", []),
-                "by_course": stats.get("by_course", []),
-            }
-        ), 200
+        return jsonify({
+            "total_students": total_students,
+            "by_year": stats.get("by_year", []),
+            "by_course": stats.get("by_course", []),
+        }), 200
+
     except Exception as e:
-        print(f"Error getting student stats: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error getting stats: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch statistics"}), 500
+
+
+# ============================================
+# DEBUG ENDPOINTS (GATED
+# ============================================
+if os.getenv('FLASK_ENV') == 'development':
+    @student_bp.route("/debug/search", methods=["GET"])
+    def debug_search():
+        """Debug search functionality (development only)"""
+        try:
+            students = Student.get_all_students_filtered(limit=5)
+            logger.debug(f"Debug: Retrieved {len(students)} students")
+            
+            return jsonify({
+                "total_students": len(students),
+                "sample_students": students
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Debug error: {e}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
