@@ -1,6 +1,13 @@
 import React from 'react';
 
-const Pagination = ({ currentPage, totalPages, onPageChange, totalItems = 0, itemsPerPage = 10 }) => {
+const Pagination = ({ 
+  currentPage, 
+  totalPages, 
+  onPageChange, 
+  totalItems = 0, 
+  itemsPerPage = 10,
+  entityType = 'entries' // New parameter for context-aware text
+}) => {
   const startItem = (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
 
@@ -43,7 +50,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems = 0, ite
         <span className="current-page">{startItem}-{endItem}</span>
         <span> of </span>
         <span>{totalItems}</span>
-        <span> entries</span>
+        <span> {entityType}</span>
       </div>
 
       {/* Pagination Controls */}

@@ -18,7 +18,6 @@ const ProgramList = () => {
   const [editingProgram, setEditingProgram] = useState(null);
   const [originalEditingCode, setOriginalEditingCode] = useState(null); // For tracking code changes in edit
   const [hasSearched, setHasSearched] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
 
   const [debouncedSearch] = useDebounce(searchParams.search, 300);
   const [debouncedFilter] = useDebounce(searchParams.filter, 300);
@@ -50,6 +49,18 @@ const ProgramList = () => {
     setSearchParams({ ...searchParams, [e.target.name]: e.target.value });
     setCurrentPage(1);
     setHasSearched(true);
+  };
+
+  const handleClearSearch = () => {
+    setSearchParams({ search: '', filter: 'all' });
+    setHasSearched(false);
+    setCurrentPage(1);
+    // Force input to clear by resetting the element directly
+    const searchInput = document.querySelector('input[name="search"]');
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.focus();
+    }
   };
 
   const handleSort = (field) => {
@@ -148,11 +159,11 @@ const ProgramList = () => {
 
   return (
     <div>
-    <div className="main-header">
+      <div className="main-header">
         <h1 className="header-title">Programs</h1>
         <div className="header-actions" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <div className="search-container" style={{ width: 380 }}>
-            <div className={`search-input-container ${isSearching ? 'searching' : ''}`}>
+            <div className="search-input-container">
               {/* Filter Dropdown with enhanced accessibility */}
               <div className={`filter-dropdown ${searchParams.filter !== 'all' ? 'filter-active' : ''}`}>
                 <select
@@ -178,22 +189,21 @@ const ProgramList = () => {
                   name="search"
                   placeholder="Search programs..."
                   value={searchParams.search}
-                  onChange={(e) => {
-                    handleSearchChange(e);
-                    setIsSearching(true);
-                    // Reset searching state after debounce delay
-                    setTimeout(() => setIsSearching(false), 350);
+                  onChange={handleSearchChange}
+                  onFocus={(e) => {
+                    // Clear any browser-persisted text on focus
+                    if (e.target.value && !searchParams.search) {
+                      e.target.value = '';
+                    }
                   }}
                   aria-label={`Search programs by ${searchParams.filter}`}
                   autoComplete="off"
+                  data-testid="search-input"
                   style={{ paddingRight: '3rem' }}
                 />
                 <FiSearch className="search-icon" aria-hidden="true" />
-                <div className="search-spinner" aria-hidden="true"></div>
               </div>
             </div>
-
-
           </div>
 
           <button className="btn add-btn" onClick={openAddModal}>
@@ -201,7 +211,7 @@ const ProgramList = () => {
           </button>
         </div>
       </div>
-      
+
       <div className="table-container">
         <table>
           <thead>
@@ -286,11 +296,7 @@ const ProgramList = () => {
                   {hasSearched && (searchParams.search || searchParams.filter !== 'all') && (
                     <button
                       className="btn btn-primary mt-3"
-                      onClick={() => {
-                        setSearchParams({ search: '', filter: 'all' });
-                        setHasSearched(false);
-                        setCurrentPage(1);
-                      }}
+                      onClick={handleClearSearch}
                     >
                       Clear Search
                     </button>
@@ -307,6 +313,7 @@ const ProgramList = () => {
         onPageChange={handlePageChange}
         totalItems={totalItems}
         itemsPerPage={10}
+        entityType="programs"
       />
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingProgram ? 'Edit Program' : 'Add Program'}>
         <ProgramForm onSuccess={handleFormSuccess} program={editingProgram} onClose={closeModal} />

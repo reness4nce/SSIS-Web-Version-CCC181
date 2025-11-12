@@ -1,8 +1,9 @@
 import React from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
+import { useSidebar } from './contexts/SidebarContext';
 
-// Page Components
+// Pages
 import StudentList from './pages/StudentList';
 import CollegeList from './pages/CollegeList';
 import ProgramList from './pages/ProgramList';
@@ -10,62 +11,79 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import Dashboard from './pages/Dashboard';
 
-// Layout Components
+// Components
 import Sidebar from './components/Sidebar';
 import Breadcrumb from './components/Breadcrumb';
-import { useSidebar } from './contexts/SidebarContext';
+
 import './App.css';
 
-// A layout for protected pages, including the sidebar and main content area
-const ProtectedLayout = () => {
-    const { isOpen, closeSidebar } = useSidebar();
 
-    return (
-        <div className="App">
-            <Sidebar />
-            {/* Mobile backdrop */}
-            {window.innerWidth <= 768 && (
-                <div
-                    className={`sidebar-backdrop ${isOpen ? 'active' : ''}`}
-                    onClick={closeSidebar}
-                    aria-hidden="true"
-                />
-            )}
-            <main id="main-content" className="main-content">
-                <Breadcrumb />
-                <Outlet /> {/* Child routes will render here */}
-            </main>
-        </div>
-    );
+const ProtectedLayout = () => {
+  const { isOpen, closeSidebar } = useSidebar();
+  const [isMobile, setIsMobile] = React.useState(window.innerWidth <= 768);
+
+  React.useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return (
+    <div className="App">
+      <Sidebar />
+      
+      {/* Mobile backdrop - now responsive */}
+      {isMobile && isOpen && (
+        <div
+          className="sidebar-backdrop active"
+          onClick={closeSidebar}
+          aria-hidden="true"
+        />
+      )}
+      
+      <main id="main-content" className="main-content">
+        <Breadcrumb />
+        <Outlet />
+      </main>
+    </div>
+  );
 };
 
-// A route guard that checks for authentication
+
 const ProtectedRoute = () => {
-    const { currentUser } = useAuth();
-    return currentUser ? <ProtectedLayout /> : <Navigate to="/login" replace />;
+  const { currentUser } = useAuth();
+  return currentUser ? <ProtectedLayout /> : <Navigate to="/login" replace />;
 };
 
 function App() {
   const { authChecked } = useAuth();
 
-  // Show a loading indicator while the initial authentication check is in progress
+ 
   if (!authChecked) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <h1>Loading...</h1>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)'
+      }}>
+        <div style={{
+          width: '48px',
+          height: '48px',
+          border: '4px solid #e2e8f0',
+          borderTop: '4px solid #4299e1',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }} />
       </div>
     );
   }
 
   return (
     <>
-      {/* Skip to main content link for accessibility */}
-      <a
-        href="#main-content"
-        className="skip-link"
-        onFocus={(e) => e.target.style.display = 'block'}
-        onBlur={(e) => e.target.style.display = 'none'}
-      >
+      {/* Skip link for accessibility */}
+      <a href="#main-content" className="skip-link">
         Skip to main content
       </a>
 
@@ -82,7 +100,7 @@ function App() {
           <Route path="/programs" element={<ProgramList />} />
         </Route>
 
-        {/* Fallback route - redirects to home or login depending on auth status */}
+        {/* Catch-all redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

@@ -54,7 +54,7 @@ def validate_signup(data):
         errors.append('Password confirmation is required')
     if data.get('password') != data.get('confirm_password'):
         errors.append('Passwords must match')
-    
+
     # Password strength validation
     password = data.get('password', '')
     if len(password) < 8:
@@ -65,7 +65,7 @@ def validate_signup(data):
         errors.append('Password must contain at least one uppercase letter')
     if not re.search(r'\d', password):
         errors.append('Password must contain at least one number')
-    
+
     return errors
 
 
@@ -86,18 +86,26 @@ def login():
             logger.warning(f"Login validation failed: {errors}")
             return jsonify({'errors': errors}), 400
 
-        username = data['username'].strip()
+        identifier = data['username'].strip()  # Can be username or email
         password = data['password']
-        
-        logger.info(f"Login attempt for user: {username}")
 
-        # Get user and verify password
-        user = User.get_by_username(username)
+        logger.info(f"Login attempt for identifier: {identifier}")
+
+        # Determine if identifier is an email or username and get user accordingly
+        if '@' in identifier:
+            # Try to login with email
+            user = User.get_by_email(identifier)
+            identifier_type = 'email'
+        else:
+            # Try to login with username
+            user = User.get_by_username(identifier)
+            identifier_type = 'username'
+
         if not user or not User.verify_password(user['password_hash'], password):
-            logger.warning(f"Failed login attempt for user: {username}")
+            logger.warning(f"Failed login attempt for {identifier_type}: {identifier}")
             return jsonify({'error': 'Invalid username or password'}), 401
 
-        logger.info(f"Successful login for user: {username}")
+        logger.info(f"Successful login for user: {user['username']}")
 
         # Create session
         session.clear()
@@ -137,12 +145,12 @@ def status():
     try:
         if 'user_id' not in session:
             return jsonify({'isAuthenticated': False}), 200
-        
+
         user = User.get_by_id(session['user_id'])
         if not user:
             session.clear()
             return jsonify({'isAuthenticated': False}), 200
-        
+
         return jsonify({
             'isAuthenticated': True,
             'user': {
@@ -195,7 +203,7 @@ def signup():
             return jsonify({'error': 'Failed to create user'}), 500
 
         logger.info(f"New user created: {username}")
-        
+
         return jsonify({
             'message': 'Account created successfully! Please log in.',
             'user': {

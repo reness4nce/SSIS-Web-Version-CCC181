@@ -18,7 +18,6 @@ const CollegeList = () => {
   const [editingCollege, setEditingCollege] = useState(null);
   const [originalEditingCode, setOriginalEditingCode] = useState(null); // For tracking code changes in edit
   const [hasSearched, setHasSearched] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
 
   const [debouncedSearch] = useDebounce(searchParams.search, 300);
   const [debouncedFilter] = useDebounce(searchParams.filter, 300);
@@ -50,6 +49,18 @@ const CollegeList = () => {
     setSearchParams({ ...searchParams, [e.target.name]: e.target.value });
     setCurrentPage(1);
     setHasSearched(true);
+  };
+
+  const handleClearSearch = () => {
+    setSearchParams({ search: '', filter: 'all' });
+    setHasSearched(false);
+    setCurrentPage(1);
+    // Force input to clear by resetting the element directly
+    const searchInput = document.querySelector('input[name="search"]');
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.focus();
+    }
   };
 
   const handleSort = (field) => {
@@ -186,7 +197,7 @@ const CollegeList = () => {
         <h1 className="header-title">Colleges</h1>
         <div className="header-actions" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <div className="search-container" style={{ width: 380 }}>
-            <div className={`search-input-container ${isSearching ? 'searching' : ''}`}>
+            <div className="search-input-container">
               {/* Filter Dropdown with enhanced accessibility */}
               <div className={`filter-dropdown ${searchParams.filter !== 'all' ? 'filter-active' : ''}`}>
                 <select
@@ -211,22 +222,21 @@ const CollegeList = () => {
                   name="search"
                   placeholder="Search colleges..."
                   value={searchParams.search}
-                  onChange={(e) => {
-                    handleSearchChange(e);
-                    setIsSearching(true);
-                    // Reset searching state after debounce delay
-                    setTimeout(() => setIsSearching(false), 350);
+                  onChange={handleSearchChange}
+                  onFocus={(e) => {
+                    // Clear any browser-persisted text on focus
+                    if (e.target.value && !searchParams.search) {
+                      e.target.value = '';
+                    }
                   }}
                   aria-label={`Search colleges by ${searchParams.filter}`}
                   autoComplete="off"
+                  data-testid="search-input"
                   style={{ paddingRight: '3rem' }}
                 />
                 <FiSearch className="search-icon" aria-hidden="true" />
-                <div className="search-spinner" aria-hidden="true"></div>
               </div>
             </div>
-
-
           </div>
 
           <button className="btn add-btn" onClick={openAddModal}>
@@ -301,11 +311,7 @@ const CollegeList = () => {
                   {hasSearched && (searchParams.search || searchParams.filter !== 'all') && (
                     <button
                       className="btn btn-primary mt-3"
-                      onClick={() => {
-                        setSearchParams({ search: '', filter: 'all' });
-                        setHasSearched(false);
-                        setCurrentPage(1);
-                      }}
+                      onClick={handleClearSearch}
                     >
                       Clear Search
                     </button>
@@ -322,6 +328,7 @@ const CollegeList = () => {
         onPageChange={handlePageChange}
         totalItems={totalItems}
         itemsPerPage={10}
+        entityType="colleges"
       />
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingCollege ? 'Edit College' : 'Add College'}>
         <CollegeForm onSuccess={handleFormSuccess} college={editingCollege} onClose={closeModal} />

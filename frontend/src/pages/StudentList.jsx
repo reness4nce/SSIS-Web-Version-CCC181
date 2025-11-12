@@ -1,14 +1,37 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { FiArrowUp, FiArrowDown, FiSearch, FiChevronDown, FiEdit, FiTrash2 } from 'react-icons/fi';
+import { useDebounce } from 'use-debounce';
+
 import api from '../services/api';
 import Pagination from '../components/Pagination';
-import { FiArrowUp, FiArrowDown, FiSearch, FiChevronDown, FiEdit, FiTrash2 } from 'react-icons/fi';
-import { showConfirmDialog, showSuccessToast, showErrorToast } from '../utils/alert';
 import Modal from '../components/Modal';
 import StudentForm from './StudentForm';
 import StudentAvatar from '../components/StudentAvatar';
-import { useDebounce } from 'use-debounce';
+import { showConfirmDialog, showSuccessToast, showErrorToast } from '../utils/alert';
+
+// Constants
+const ITEMS_PER_PAGE = 10;
+const DEBOUNCE_DELAY = 300;
+
+const FILTER_OPTIONS = [
+  { value: 'all', label: 'Search all fields' },
+  { value: 'id', label: 'Search by Student ID' },
+  { value: 'firstname', label: 'Search by First Name' },
+  { value: 'lastname', label: 'Search by Last Name' },
+  { value: 'course', label: 'Search by Course' }
+];
+
+const SORTABLE_COLUMNS = [
+  { key: 'id', label: 'ID' },
+  { key: 'firstname', label: 'First Name' },
+  { key: 'lastname', label: 'Last Name' },
+  { key: 'course', label: 'Course' },
+  { key: 'year', label: 'Year' },
+  { key: 'gender', label: 'Gender' }
+];
 
 const StudentList = () => {
+  // State management
   const [students, setStudents] = useState([]);
   const [searchParams, setSearchParams] = useState({ search: '', filter: 'all' });
   const [sortParams, setSortParams] = useState({ sort: 'id', order: 'asc' });
@@ -17,158 +40,227 @@ const StudentList = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
-  const [originalEditingId, setOriginalEditingId] = useState(null); // For tracking ID changes in edit
+  const [originalEditingId, setOriginalEditingId] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
 
-  // Debounced search and filter
-  const [debouncedSearch] = useDebounce(searchParams.search, 300);
-  const [debouncedFilter] = useDebounce(searchParams.filter, 300);
+  // Debounced search for performance
+  const [debouncedSearch] = useDebounce(searchParams.search, DEBOUNCE_DELAY);
+  const [debouncedFilter] = useDebounce(searchParams.filter, DEBOUNCE_DELAY);
 
+  // Ref to track if component is mounted
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Fetch students smoothly
   const fetchStudents = useCallback(async () => {
     try {
       const response = await api.getStudents({
         page: currentPage,
-        per_page: 10,
-        search: debouncedSearch,  // Use debounced values for better performance
+        per_page: ITEMS_PER_PAGE,
+        search: debouncedSearch,
         filter: debouncedFilter,
         sort: sortParams.sort,
         order: sortParams.order,
       });
-      setStudents(response.data.items);
-      setTotalPages(response.data.pages);
-      setTotalItems(response.data.total);
+
+      if (isMountedRef.current) {
+        setStudents(response.data.items || []);
+        setTotalPages(response.data.pages || 1);
+        setTotalItems(response.data.total || 0);
+      }
     } catch (error) {
-      showErrorToast('Error fetching students.');
-      console.error("Error fetching students:", error);
+      console.error('Error fetching students:', error);
+      if (isMountedRef.current) {
+        showErrorToast(error.response?.data?.error || 'Failed to load students.');
+        setStudents([]);
+      }
     }
-  }, [currentPage, debouncedSearch, debouncedFilter, sortParams.sort, sortParams.order]);
+  }, [currentPage, debouncedSearch, debouncedFilter, sortParams]);
 
   useEffect(() => {
     fetchStudents();
   }, [fetchStudents]);
 
+  // Event handlers
   const handleSearchChange = (e) => {
-    setSearchParams({ ...searchParams, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setSearchParams((prev) => ({ ...prev, [name]: value }));
     setCurrentPage(1);
     setHasSearched(true);
   };
 
+  const handleClearSearch = () => {
+    setSearchParams({ search: '', filter: 'all' });
+    setHasSearched(false);
+    setCurrentPage(1);
+  };
+
   const handleSort = (field) => {
-    const order = sortParams.sort === field && sortParams.order === 'asc' ? 'desc' : 'asc';
-    setSortParams({ sort: field, order });
+    setSortParams((prev) => ({
+      sort: field,
+      order: prev.sort === field && prev.order === 'asc' ? 'desc' : 'asc'
+    }));
   };
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id) => {
-    const result = await showConfirmDialog({ title: 'Are you sure?', text: 'This student will be permanently deleted.' });
+  const handleDelete = async (student) => {
+    const result = await showConfirmDialog({
+      title: 'Delete Student?',
+      text: `Are you sure you want to delete ${student.firstname} ${student.lastname}? This action cannot be undone.`
+    });
+
     if (result.isConfirmed) {
+      const previousStudents = [...students];
+      setStudents((prev) => prev.filter((s) => s.id !== student.id));
+
       try {
-        await api.deleteStudent(id);
+        await api.deleteStudent(student.id);
         showSuccessToast('Student deleted successfully!');
         fetchStudents();
       } catch (error) {
-        showErrorToast(error.response?.data?.error || 'Error deleting student.');
+        console.error('Error deleting student:', error);
+        setStudents(previousStudents);
+        showErrorToast(error.response?.data?.error || 'Failed to delete student.');
       }
     }
   };
 
   const handleFormSuccess = (studentData, operation) => {
     if (operation === 'update' && studentData && originalEditingId) {
-      // For updates, replace the student in the current list
-      // This preserves pagination, search, and filter state
-      setStudents(prev =>
-        prev.map(student =>
+      setStudents((prev) =>
+        prev.map((student) =>
           student.id === originalEditingId ? studentData : student
         )
       );
-    } else if (operation === 'create' && studentData) {
-      // For new students, refresh to show the new record
-      // (it might be on a different page or filtered out)
-      fetchStudents();
+    } else if (operation === 'create') {
+      if (currentPage === 1) {
+        setStudents((prev) => [studentData, ...prev]);
+        setTotalItems((prev) => prev + 1);
+      }
+      setTimeout(() => fetchStudents(), 100);
+    } else if (operation === 'photo_update' && studentData) {
+      setStudents((prev) =>
+        prev.map((student) =>
+          student.id === studentData.id ? { ...student, ...studentData } : student
+        )
+      );
+
+      if (editingStudent?.id === studentData.id) {
+        setEditingStudent({ ...editingStudent, ...studentData });
+      }
     } else {
-      // Fallback: refresh data
       fetchStudents();
     }
 
-    // Close modal after a brief delay to allow state to update
-    setTimeout(() => {
-      closeModal();
-    }, 100);
+    closeModal();
   };
 
-  const openAddModal = () => { setEditingStudent(null); setIsModalOpen(true); };
+  // Modal handlers
+  const openAddModal = () => {
+    setEditingStudent(null);
+    setOriginalEditingId(null);
+    setIsModalOpen(true);
+  };
+
   const openEditModal = async (student) => {
-    // Save the original ID for handling any ID changes
     setOriginalEditingId(student.id);
 
-    // Always fetch fresh data when opening edit modal to ensure we have latest changes
     try {
       const response = await api.getStudent(student.id);
-      const freshStudent = response.data;
-      setEditingStudent(freshStudent);
+      setEditingStudent(response.data);
       setIsModalOpen(true);
     } catch (error) {
-      console.error("Error fetching fresh student data:", error);
-      // Fallback to using the provided student data if fresh fetch fails
+      console.error('Error fetching student:', error);
       setEditingStudent(student);
       setIsModalOpen(true);
     }
   };
+
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingStudent(null);
     setOriginalEditingId(null);
   };
 
-  const renderSortArrow = (field) => {
-    if (sortParams.sort === field) {
-      return sortParams.order === 'asc' ? <FiArrowUp /> : <FiArrowDown />;
-    }
-    return null;
+  // Render helpers
+  const renderSortIcon = (field) => {
+    if (sortParams.sort !== field) return null;
+    return sortParams.order === 'asc' ? <FiArrowUp /> : <FiArrowDown />;
   };
 
-  const getSortButtonStyle = (field) => {
-    if (sortParams.sort === field) {
-      return {
-        cursor: 'pointer',
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        color: '#fff',
-        fontWeight: 'bold'
-      };
-    }
-    return { cursor: 'pointer' };
+  const getSortHeaderStyle = (field) => ({
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    ...(sortParams.sort === field && {
+      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+      color: '#fff',
+      fontWeight: 'bold'
+    })
+  });
+
+  const renderEmptyState = () => {
+    const hasActiveSearch = searchParams.search || searchParams.filter !== 'all';
+    
+    return (
+      <tr>
+        <td colSpan="8" className="empty-state">
+          <div className="empty-state-icon">
+            {hasSearched && hasActiveSearch ? '🔍' : '👥'}
+          </div>
+          <div className="empty-state-text">
+            {hasSearched && hasActiveSearch
+              ? `No students found matching "${searchParams.search}" in ${
+                  searchParams.filter === 'all' ? 'all fields' : searchParams.filter
+                }.`
+              : 'No students found. Add your first student to get started!'}
+          </div>
+          {hasSearched && hasActiveSearch && (
+            <button className="btn btn-primary mt-3" onClick={handleClearSearch}>
+              Clear Search
+            </button>
+          )}
+        </td>
+      </tr>
+    );
   };
 
   return (
     <div>
+      {/* Header */}
       <div className="main-header">
         <h1 className="header-title">Students</h1>
         <div className="header-actions" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+          {/* Search & Filter */}
           <div className="search-container" style={{ width: 380 }}>
-            <div className={`search-input-container ${isSearching ? 'searching' : ''}`}>
-              {/* Filter Dropdown with enhanced accessibility */}
+            <div className="search-input-container">
+              {/* Filter Dropdown */}
               <div className={`filter-dropdown ${searchParams.filter !== 'all' ? 'filter-active' : ''}`}>
                 <select
                   name="filter"
                   value={searchParams.filter}
                   onChange={handleSearchChange}
                   className="form-control"
-                  aria-label="Search field filter"
+                  aria-label="Filter search field"
                 >
-                  <option value="all">Search all fields</option>
-                  <option value="id">Search by Student ID</option>
-                  <option value="firstname">Search by First Name</option>
-                  <option value="lastname">Search by Last Name</option>
-                  <option value="course">Search by Course</option>
+                  {FILTER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
                 <FiChevronDown className="dropdown-icon" aria-hidden="true" />
               </div>
 
-              {/* Enhanced Search Input */}
+              {/* Search Input */}
               <div style={{ position: 'relative', flex: 1 }}>
                 <input
                   type="text"
@@ -176,92 +268,53 @@ const StudentList = () => {
                   name="search"
                   placeholder="Search students..."
                   value={searchParams.search}
-                  onChange={(e) => {
-                    handleSearchChange(e);
-                    setIsSearching(true);
-                    // Reset searching state after debounce delay
-                    setTimeout(() => setIsSearching(false), 350);
-                  }}
+                  onChange={handleSearchChange}
                   aria-label={`Search students by ${searchParams.filter}`}
                   autoComplete="off"
                   style={{ paddingRight: '3rem' }}
                 />
                 <FiSearch className="search-icon" aria-hidden="true" />
-                <div className="search-spinner" aria-hidden="true"></div>
               </div>
             </div>
           </div>
 
+          {/* Add Button */}
           <button className="btn add-btn" onClick={openAddModal}>
-            <span className="add-icon" aria-hidden="true">＋</span> Add Student
+            <span className="add-icon" aria-hidden="true">＋</span>
+            Add Student
           </button>
         </div>
       </div>
 
+      {/* Table */}
       <div className="table-container">
         <table>
           <thead>
             <tr>
-              <th className="col-avatar">
-                Photo
-              </th>
-              <th className="col-id" onClick={() => handleSort('id')} style={getSortButtonStyle('id')}>
-                ID {renderSortArrow('id')}
-                {sortParams.sort === 'id' && (
-                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
-                    ({sortParams.order === 'asc' ? '↑' : '↓'})
-                  </span>
-                )}
-              </th>
-              <th className="col-name" onClick={() => handleSort('firstname')} style={getSortButtonStyle('firstname')}>
-                First Name {renderSortArrow('firstname')}
-                {sortParams.sort === 'firstname' && (
-                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
-                    ({sortParams.order === 'asc' ? '↑' : '↓'})
-                  </span>
-                )}
-              </th>
-              <th className="col-name" onClick={() => handleSort('lastname')} style={getSortButtonStyle('lastname')}>
-                Last Name {renderSortArrow('lastname')}
-                {sortParams.sort === 'lastname' && (
-                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
-                    ({sortParams.order === 'asc' ? '↑' : '↓'})
-                  </span>
-                )}
-              </th>
-              <th className="col-course" onClick={() => handleSort('course')} style={getSortButtonStyle('course')}>
-                Course {renderSortArrow('course')}
-                {sortParams.sort === 'course' && (
-                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
-                    ({sortParams.order === 'asc' ? '↑' : '↓'})
-                  </span>
-                )}
-              </th>
-              <th className="col-year" onClick={() => handleSort('year')} style={getSortButtonStyle('year')}>
-                Year {renderSortArrow('year')}
-                {sortParams.sort === 'year' && (
-                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
-                    ({sortParams.order === 'asc' ? '↑' : '↓'})
-                  </span>
-                )}
-              </th>
-              <th className="col-gender" onClick={() => handleSort('gender')} style={getSortButtonStyle('gender')}>
-                Gender {renderSortArrow('gender')}
-                {sortParams.sort === 'gender' && (
-                  <span style={{ marginLeft: '8px', fontSize: '0.8em', opacity: 0.8 }}>
-                    ({sortParams.order === 'asc' ? '↑' : '↓'})
-                  </span>
-                )}
-              </th>
+              <th className="col-avatar">Photo</th>
+              {SORTABLE_COLUMNS.map((column) => (
+                <th
+                  key={column.key}
+                  className={`col-${column.key}`}
+                  onClick={() => handleSort(column.key)}
+                  style={getSortHeaderStyle(column.key)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSort(column.key)}
+                  aria-sort={sortParams.sort === column.key ? sortParams.order : 'none'}
+                >
+                  {column.label} {renderSortIcon(column.key)}
+                </th>
+              ))}
               <th className="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {students && students.length > 0 ? (
+            {students.length > 0 ? (
               students.map((student) => (
-                <tr key={student.id}>
+                <tr key={student.id} className="student-row">
                   <td className="avatar-container">
-                    <StudentAvatar student={student} size={36} />
+                    <StudentAvatar student={student} size={90} />
                   </td>
                   <td>{student.id || 'N/A'}</td>
                   <td>{student.firstname || 'N/A'}</td>
@@ -274,64 +327,49 @@ const StudentList = () => {
                       <button
                         className="btn btn-warning btn-sm"
                         onClick={() => openEditModal(student)}
-                        aria-label={`Edit student ${student.firstname} ${student.lastname}`}
-                        title="Edit student"
+                        aria-label={`Edit ${student.firstname} ${student.lastname}`}
                       >
-                        <FiEdit size={14} aria-hidden="true" />
-                        Edit
+                        <FiEdit size={14} aria-hidden="true" /> Edit
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
-                        onClick={() => handleDelete(student.id)}
-                        aria-label={`Delete student ${student.firstname} ${student.lastname}`}
-                        title="Delete student"
+                        onClick={() => handleDelete(student)}
+                        aria-label={`Delete ${student.firstname} ${student.lastname}`}
                       >
-                        <FiTrash2 size={14} aria-hidden="true" />
-                        Delete
+                        <FiTrash2 size={14} aria-hidden="true" /> Delete
                       </button>
                     </div>
                   </td>
                 </tr>
               ))
             ) : (
-              <tr>
-                <td colSpan="8" className="empty-state">
-                  <div className="empty-state-icon">
-                    {hasSearched && (searchParams.search || searchParams.filter !== 'all') ? '🔍' : '👥'}
-                  </div>
-                  <div className="empty-state-text">
-                    {hasSearched && (searchParams.search || searchParams.filter !== 'all')
-                      ? `No students found matching "${searchParams.search}" in ${searchParams.filter === 'all' ? 'all fields' : searchParams.filter}.`
-                      : 'No students found.'}
-                  </div>
-                  {hasSearched && (searchParams.search || searchParams.filter !== 'all') && (
-                    <button
-                      className="btn btn-primary mt-3"
-                      onClick={() => {
-                        setSearchParams({ search: '', filter: 'all' });
-                        setHasSearched(false);
-                        setCurrentPage(1);
-                      }}
-                    >
-                      Clear Search
-                    </button>
-                  )}
-                </td>
-              </tr>
+              renderEmptyState()
             )}
           </tbody>
         </table>
       </div>
 
+      {/* Pagination */}
       <Pagination
         currentPage={currentPage}
         totalPages={totalPages}
         onPageChange={handlePageChange}
         totalItems={totalItems}
-        itemsPerPage={10}
+        itemsPerPage={ITEMS_PER_PAGE}
+        entityType="students"
       />
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={editingStudent ? 'Edit Student' : 'Add Student'}>
-        <StudentForm onSuccess={handleFormSuccess} student={editingStudent} onClose={closeModal} />
+
+      {/* Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        title={editingStudent ? 'Edit Student' : 'Add Student'}
+      >
+        <StudentForm
+          onSuccess={handleFormSuccess}
+          student={editingStudent}
+          onClose={closeModal}
+        />
       </Modal>
     </div>
   );

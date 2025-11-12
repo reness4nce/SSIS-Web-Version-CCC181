@@ -19,11 +19,13 @@ class User:
 
     @staticmethod
     def get_by_username(username):
-        return get_one("users", where_clause="username = %s", params=[username])
+        # Use service_role client to bypass RLS for authentication
+        return get_one("users", where_clause="username = %s", params=[username], use_service_role=True)
 
     @staticmethod
     def get_by_email(email):
-        return get_one("users", where_clause="email = %s", params=[email])
+        # Use service_role client to bypass RLS for authentication
+        return get_one("users", where_clause="email = %s", params=[email], use_service_role=True)
 
     @staticmethod
     def get_by_id(user_id):

@@ -96,21 +96,24 @@
     color: #6B7280;
 }
 
-/* Enhanced Search Components */
+/* Enhanced Search Components - IMPROVED */
 .search-container {
     display: flex;
     flex-direction: column;
     gap: 12px;
     width: 100%;
-    min-width: 320px; /* Ensure minimum usable width */
+    min-width: 500px; /* Increased from 320px to 500px */
+    max-width: 650px; /* Added max-width for better control */
+    padding: 8px; /* Added padding for better breathing room */
 }
 
 .search-input-container {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 16px; /* Increased from 8px to 16px for better spacing */
     min-width: 0; /* Allow flex shrinking */
+    padding: 4px; /* Added inner padding */
 }
 
 .search-input-container.searching .search-input {
@@ -154,12 +157,15 @@
 
 .filter-dropdown {
     position: relative;
-    min-width: 140px;
+    min-width: 160px; /* Increased from 140px to 160px */
+    flex-shrink: 0; /* Prevent shrinking */
 }
 
 .filter-dropdown select {
     padding-right: 2.5rem;
     cursor: pointer;
+    font-size: 0.9rem; /* Slightly larger font */
+    padding: 10px 16px; /* Better padding */
 }
 
 .filter-dropdown .dropdown-icon {
@@ -179,6 +185,32 @@
 
 .filter-active .dropdown-icon {
     color: #7B4B2A;
+}
+
+/* Enhanced search input styling */
+.search-input {
+    flex: 1; /* Take available space */
+    min-width: 200px; /* Ensure minimum width */
+    font-size: 0.95rem; /* Better font size */
+    padding: 10px 16px; /* Better padding */
+    padding-right: 3rem; /* Space for search icon */
+    border-radius: 8px; /* Slightly rounded */
+    transition: all 0.3s ease; /* Smooth transitions */
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #7B4B2A;
+    box-shadow: 0 0 0 3px rgba(123, 75, 42, 0.1);
+    background: white;
+}
+
+/* Header actions layout improvements */
+.header-actions {
+    display: flex;
+    gap: 20px; /* Increased gap from 16px to 20px */
+    align-items: center;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
 }
 
 /* Filters */
@@ -209,6 +241,7 @@
     overflow: hidden;
     font-size: 0.9rem;
     letter-spacing: 0.5px;
+    flex-shrink: 0; /* Prevent button shrinking */
 }
 
 .btn::before {
@@ -276,7 +309,6 @@
 .btn-sm:hover {
     transform: translateY(-2px);
 }
-
 
 /* Tables */
 .table-container {
@@ -427,6 +459,23 @@ td {
     min-width: 140px;
 }
 
+/* Photo Column Styles */
+.col-avatar {
+    width: 100px;
+    min-width: 100px;
+    text-align: center;
+}
+
+.avatar-container {
+    padding: 8px;
+    text-align: center;
+    vertical-align: middle;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* Empty state styling */
 .empty-state {
     text-align: center;
@@ -501,8 +550,153 @@ td {
   z-index: 2;
 }
 
+/* Responsive Design for Search Components */
+@media (max-width: 768px) {
+    .main-header {
+        flex-direction: column;
+        gap: 20px;
+        padding: 15px;
+    }
+    
+    .header-actions {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .search-container {
+        min-width: 350px;
+        max-width: 100%;
+    }
+    
+    .search-input-container {
+        gap: 12px; /* Slightly smaller gap on mobile */
+    }
+    
+    .filter-dropdown {
+        min-width: 140px; /* Smaller on mobile */
+    }
+}
+
+@media (max-width: 480px) {
+    .main-header {
+        padding: 10px;
+    }
+    
+    .header-actions {
+        flex-direction: column;
+        width: 100%;
+        gap: 15px;
+    }
+    
+    .search-container {
+        min-width: 100%;
+        max-width: 100%;
+    }
+    
+    .search-input-container {
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+    
+    .filter-dropdown {
+        width: 100%;
+        min-width: 100%;
+    }
+}
+
 /* Loading Spinner Animation */
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* ============================================
+   SMOOTH PAGE TRANSITIONS
+   ============================================ */
+
+/* Smooth row fade-in */
+.student-row,
+tbody tr {
+    animation: fadeInRow 0.3s ease;
+}
+
+@keyframes fadeInRow {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Smooth page content entrance */
+.main-content {
+    animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Smooth empty state */
+.empty-state {
+    animation: fadeIn 0.5s ease;
+}
+
+/* Smooth scroll */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Enhanced button hover */
+.btn {
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+/* Smooth form inputs */
+.form-control,
+.search-input {
+    transition: all 0.2s ease;
+}
+
+/* Smooth table hover */
+tbody tr {
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+/* Smooth sortable headers */
+th {
+    transition: all 0.2s ease;
+}
+
+/* Accessibility: Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

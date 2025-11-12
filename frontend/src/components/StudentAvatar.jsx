@@ -1,8 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
-const StudentAvatar = ({ 
-  student, 
-  size = 36, 
+// Constants
+const AVATAR_COLORS = [
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
+  '#FECA57', '#FF9FF3', '#54A0FF', '#5F27CD',
+  '#00D2D3', '#FF9F43', '#6C5CE7', '#A29BFE'
+];
+
+const StudentAvatar = ({
+  student,
+  size = 36,
   showBorder = true,
   borderColor = '#CBD5E0',
   borderWidth = 2,
@@ -12,70 +19,70 @@ const StudentAvatar = ({
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
 
-  // Calculate dimensions
-  const dimensions = {
+  // Validate image URL
+  const isValidImageUrl = useMemo(() => {
+    if (!student?.profile_photo_url || typeof student.profile_photo_url !== 'string') {
+      return false;
+    }
+
+    try {
+      const url = new URL(student.profile_photo_url);
+      const hasImagePath =
+        /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(url.pathname) ||
+        url.pathname.includes('student-photos');
+      return hasImagePath && url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }, [student?.profile_photo_url]);
+
+  // Reset states when URL changes
+  useEffect(() => {
+    setImageError(false);
+    setImageLoading(!!student?.profile_photo_url && isValidImageUrl);
+  }, [student?.profile_photo_url, isValidImageUrl]);
+
+  // Generate initials
+  const initials = useMemo(() => {
+    const first = student?.firstname?.charAt(0).toUpperCase() || '';
+    const last = student?.lastname?.charAt(0).toUpperCase() || '';
+    return first + last || '?';
+  }, [student?.firstname, student?.lastname]);
+
+  // Generate consistent color based on student ID
+  const avatarColor = useMemo(() => {
+    if (!student?.id) return '#A0AEC0';
+
+    let hash = 0;
+    for (let i = 0; i < student.id.length; i++) {
+      hash = student.id.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  }, [student?.id]);
+
+  const showImage = student?.profile_photo_url && !imageError && isValidImageUrl;
+  const studentName = `${student?.firstname || ''} ${student?.lastname || ''}`.trim();
+
+  // Base styles
+  const containerStyles = {
     width: size,
     height: size,
     borderRadius: size / 2,
-  };
-
-  // Create initials from student name
-  const getInitials = (firstName, lastName) => {
-    if (!firstName && !lastName) return '?';
-    const first = firstName ? firstName.charAt(0).toUpperCase() : '';
-    const last = lastName ? lastName.charAt(0).toUpperCase() : '';
-    return first + last || '?';
-  };
-
-  // Generate a color based on student ID for consistent styling
-  const getAvatarColor = (studentId) => {
-    if (!studentId) return '#A0AEC0';
-    
-    let hash = 0;
-    for (let i = 0; i < studentId.length; i++) {
-      hash = studentId.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    
-    const colors = [
-      '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', 
-      '#FECA57', '#FF9FF3', '#54A0FF', '#5F27CD',
-      '#00D2D3', '#FF9F43', '#6C5CE7', '#A29BFE'
-    ];
-    
-    return colors[Math.abs(hash) % colors.length];
-  };
-
-  const avatarColor = getAvatarColor(student?.id);
-  const initials = getInitials(student?.firstname, student?.lastname);
-
-  // Container styles
-  const containerStyles = {
-    ...dimensions,
-    borderRadius: dimensions.borderRadius,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: Math.max(size * 0.4, 12), // Responsive font size
+    fontSize: Math.max(size * 0.35, 12),
     fontWeight: '600',
-    color: textColor,
-    backgroundColor: imageError || !student?.profile_photo_url ? 
-      (student?.profile_photo_url ? avatarColor : backgroundColor) : 
-      'transparent',
+    color: '#FFFFFF',
+    backgroundColor: showImage ? 'transparent' : avatarColor,
     border: showBorder ? `${borderWidth}px solid ${borderColor}` : 'none',
     position: 'relative',
     overflow: 'hidden',
-    transition: 'all 0.2s ease-in-out',
-    cursor: 'default',
-    userSelect: 'none',
+    transition: 'all 0.2s ease',
     flexShrink: 0,
-    backgroundImage: !imageError && student?.profile_photo_url ? 
-      `url(${student.profile_photo_url})` : 'none',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    backgroundRepeat: 'no-repeat',
+    userSelect: 'none'
   };
 
-  // Handle image load events
   const handleImageLoad = () => {
     setImageLoading(false);
     setImageError(false);
@@ -86,78 +93,37 @@ const StudentAvatar = ({
     setImageError(true);
   };
 
-  // Loading spinner for images
-  if (student?.profile_photo_url && imageLoading && !imageError) {
-    return (
-      <div style={containerStyles}>
-        <div 
-          style={{
-            width: '20%',
-            height: '20%',
-            border: `2px solid ${textColor}`,
-            borderTop: '2px solid transparent',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-          }}
-        />
-      </div>
-    );
-  }
-
-  // Main avatar content
   return (
-    <div style={containerStyles}>
-      {student?.profile_photo_url && !imageError ? (
+    <div
+      style={containerStyles}
+      role="img"
+      aria-label={studentName ? `Photo of ${studentName}` : 'Student photo'}
+      title={`${studentName || 'Unknown Student'} (${student?.id || 'N/A'})`}
+    >
+      {showImage ? (
         <img
           src={student.profile_photo_url}
-          alt={`${student.firstname} ${student.lastname}`}
+          alt={studentName || 'Student'}
           style={{
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            borderRadius: dimensions.borderRadius,
+            borderRadius: size / 2
           }}
           onLoad={handleImageLoad}
           onError={handleImageError}
           loading="lazy"
         />
       ) : (
-        <span 
+        <span
           style={{
-            fontSize: Math.max(size * 0.35, 10),
-            fontWeight: '600',
-            color: '#FFFFFF',
             textShadow: '0 1px 2px rgba(0,0,0,0.1)',
-            lineHeight: 1,
+            lineHeight: 1
           }}
         >
           {initials}
         </span>
       )}
-      
-      {/* Optional hover overlay for accessibility */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'transparent',
-          borderRadius: dimensions.borderRadius,
-          transition: 'background-color 0.2s ease',
-          '&:hover': {
-            backgroundColor: 'rgba(0,0,0,0.05)',
-          },
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = 'transparent';
-        }}
-        title={`${student?.firstname || ''} ${student?.lastname || ''} (${student?.id || 'N/A'})`}
-      />
     </div>
   );
 };

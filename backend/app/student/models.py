@@ -34,12 +34,10 @@ class Student:
         execute_raw_sql(create_table_query, commit=True)
         logger.info("Student table created/verified")
 
-
     @staticmethod
     def get_by_id(student_id):
         """Get student by ID"""
         return get_one("student", where_clause="id = %s", params=[student_id])
-
 
     @staticmethod
     def get_all_students(limit=None, offset=None, course_filter=None, year_filter=None):
@@ -58,12 +56,12 @@ class Student:
         where_clause = " AND ".join(where_conditions) if where_conditions else None
         return get_all("student", where_clause=where_clause, params=params, limit=limit, offset=offset)
 
-
     @staticmethod
     def get_all_students_filtered(where_clause=None, params=None, order_by="id", order_direction="ASC", limit=None, offset=None):
         """
         Get filtered students with sorting (HIGH PRIORITY #3)
         Moves filtering to database level for better performance
+        FIXED: Uses Supabase client directly to avoid order clause issues
         """
         try:
             # Validate order_by to prevent SQL injection
@@ -77,22 +75,70 @@ class Student:
                 logger.warning(f"Invalid order direction: {order_direction}, defaulting to 'ASC'")
                 order_direction = 'ASC'
 
-            order_clause = f"{order_by} {order_direction}"
+            desc = order_direction.upper() == 'DESC'
 
-            logger.debug(f"Fetching students: where={where_clause}, order={order_clause}, limit={limit}, offset={offset}")
+            logger.debug(f"Fetching students: where={where_clause}, order={order_by} {order_direction}, limit={limit}, offset={offset}")
 
-            return get_all(
-                "student",
-                where_clause=where_clause,
-                params=params,
-                order_by=order_clause,
-                limit=limit,
-                offset=offset
-            )
+            # Use Supabase client directly for proper query building
+            query = supabase_manager.get_client().table('student').select('*')
+
+            # Apply where clause if provided
+            if where_clause and params:
+                # Handle ILIKE searches
+                if 'ILIKE' in where_clause.upper():
+                    search_term = params[0].replace('%', '') if params else ''
+                    
+                    if 'OR' in where_clause.upper():
+                        # Multiple field search - use .or_() filter
+                        # Extract field names from where_clause
+                        # Example: "(id ILIKE %s OR firstname ILIKE %s OR lastname ILIKE %s OR course ILIKE %s)"
+                        fields = []
+                        if 'id ILIKE' in where_clause:
+                            fields.append(f'id.ilike.%{search_term}%')
+                        if 'firstname ILIKE' in where_clause:
+                            fields.append(f'firstname.ilike.%{search_term}%')
+                        if 'lastname ILIKE' in where_clause:
+                            fields.append(f'lastname.ilike.%{search_term}%')
+                        if 'course ILIKE' in where_clause:
+                            fields.append(f'course.ilike.%{search_term}%')
+                        
+                        if fields:
+                            query = query.or_(','.join(fields))
+                    else:
+                        # Single field search
+                        # Extract field name
+                        field_match = where_clause.split()[0]
+                        query = query.ilike(field_match, f'%{search_term}%')
+                
+                elif '=' in where_clause:
+                    # Exact match filters (course, year)
+                    if 'course' in where_clause and params:
+                        query = query.eq('course', params[0])
+                    if 'year' in where_clause and params:
+                        year_param = params[-1] if len(params) > 0 else params[0]
+                        query = query.eq('year', year_param)
+
+            # Apply ordering (FIXED: separate column and direction)
+            query = query.order(order_by, desc=desc)
+
+            # Apply pagination
+            if offset is not None and limit:
+                end = offset + limit - 1
+                query = query.range(offset, end)
+            elif limit:
+                query = query.limit(limit)
+
+            # Execute query
+            result = query.execute()
+            
+            logger.debug(f"Query returned {len(result.data) if result.data else 0} students")
+            
+            return result.data if result.data else []
+
         except Exception as e:
             logger.error(f"Error fetching filtered students: {e}", exc_info=True)
-            return []
-
+            # Fallback to legacy method
+            return Student.get_all_students(limit=limit, offset=offset)
 
     @staticmethod
     def count_students(course_filter=None, year_filter=None):
@@ -111,16 +157,48 @@ class Student:
         where_clause = " AND ".join(where_conditions) if where_conditions else None
         return count_records("student", where_clause=where_clause, params=params)
 
-
     @staticmethod
     def count_students_filtered(where_clause=None, params=None):
-        """Count students matching filter (HIGH PRIORITY #3)"""
+        """Count students matching filter (HIGH PRIORITY #3) - FIXED"""
         try:
-            return count_records("student", where_clause=where_clause, params=params)
+            # Use Supabase client directly for accurate counting
+            query = supabase_manager.get_client().table('student').select('*', count='exact')
+
+            # Apply same filters as get_all_students_filtered
+            if where_clause and params:
+                if 'ILIKE' in where_clause.upper():
+                    search_term = params[0].replace('%', '') if params else ''
+                    
+                    if 'OR' in where_clause.upper():
+                        fields = []
+                        if 'id ILIKE' in where_clause:
+                            fields.append(f'id.ilike.%{search_term}%')
+                        if 'firstname ILIKE' in where_clause:
+                            fields.append(f'firstname.ilike.%{search_term}%')
+                        if 'lastname ILIKE' in where_clause:
+                            fields.append(f'lastname.ilike.%{search_term}%')
+                        if 'course ILIKE' in where_clause:
+                            fields.append(f'course.ilike.%{search_term}%')
+                        
+                        if fields:
+                            query = query.or_(','.join(fields))
+                    else:
+                        field_match = where_clause.split()[0]
+                        query = query.ilike(field_match, f'%{search_term}%')
+                
+                elif '=' in where_clause:
+                    if 'course' in where_clause and params:
+                        query = query.eq('course', params[0])
+                    if 'year' in where_clause and params:
+                        year_param = params[-1] if len(params) > 0 else params[0]
+                        query = query.eq('year', year_param)
+
+            result = query.execute()
+            return result.count if hasattr(result, 'count') else len(result.data or [])
+
         except Exception as e:
             logger.error(f"Error counting filtered students: {e}", exc_info=True)
             return 0
-
 
     @staticmethod
     def create_student(student_id, firstname, lastname, course, year, gender, profile_photo_url=None, profile_photo_filename=None):
@@ -143,7 +221,6 @@ class Student:
         except Exception as e:
             logger.error(f"Error creating student: {e}", exc_info=True)
             raise
-
 
     @staticmethod
     def update_student(student_id, firstname=None, lastname=None, course=None, year=None, gender=None, profile_photo_url=None, profile_photo_filename=None):
@@ -185,7 +262,6 @@ class Student:
             logger.error(f"Error updating student: {e}", exc_info=True)
             raise
 
-
     @staticmethod
     def delete_student(student_id):
         """Delete student with photo cleanup (HIGH PRIORITY - proper order)"""
@@ -213,18 +289,15 @@ class Student:
             logger.error(f"Error deleting student: {e}", exc_info=True)
             raise
 
-
     @staticmethod
     def get_students_by_course(course):
         """Get students by course"""
         return get_all("student", where_clause="course = %s", params=[course])
 
-
     @staticmethod
     def get_students_by_year(year):
         """Get students by year"""
         return get_all("student", where_clause="year = %s", params=[year])
-
 
     @staticmethod
     def upload_profile_photo(student_id, file_data, filename):
@@ -268,7 +341,6 @@ class Student:
             logger.error(f"Error uploading photo: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
-
     @staticmethod
     def delete_profile_photo(student_id, filename):
         """Delete profile photo from Supabase Storage"""
@@ -295,7 +367,6 @@ class Student:
         except Exception as e:
             logger.error(f"Error deleting photo: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
-
 
     @staticmethod
     def get_student_stats():
@@ -324,7 +395,6 @@ class Student:
             logger.error(f"Error getting stats: {e}", exc_info=True)
             return {'by_year': [], 'by_course': []}
 
-
     def __init__(self, student_id, firstname, lastname, course, year, gender, profile_photo_url=None, profile_photo_filename=None):
         """Initialize Student object"""
         self.id = student_id.upper()
@@ -335,7 +405,6 @@ class Student:
         self.gender = gender
         self.profile_photo_url = profile_photo_url
         self.profile_photo_filename = profile_photo_filename
-
 
     def to_dict(self):
         """Convert to dictionary"""
@@ -349,7 +418,6 @@ class Student:
             'profile_photo_url': self.profile_photo_url,
             'profile_photo_filename': self.profile_photo_filename
         }
-
 
     def __repr__(self):
         return f'<Student {self.firstname} {self.lastname} ({self.id})>'
