@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import api from "../services/api"; // ✅ our API wrapper
 import { showSuccessToast, showErrorToast } from "../utils/alert";
+import { FiUpload, FiX, FiCamera } from "react-icons/fi";
+import StudentAvatar from "../components/StudentAvatar";
 
 function StudentForm({ onSuccess, student, onClose }) {
   const operation = student ? 'update' : 'create';
@@ -21,6 +23,12 @@ function StudentForm({ onSuccess, student, onClose }) {
   const [isCheckingId, setIsCheckingId] = useState(false);
   const [isValidatingProgram, setIsValidatingProgram] = useState(false);
   const [programValidation, setProgramValidation] = useState({});
+
+  // Photo upload states
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState("");
 
   // ✅ Fetch available programs for the dropdown with refresh capability
   const fetchPrograms = async () => {
@@ -91,13 +99,38 @@ function StudentForm({ onSuccess, student, onClose }) {
     }
   }, [formData.course]);
 
-  // ✅ Populate form if editing
+  // ✅ Populate form if editing with data sanitization
   useEffect(() => {
     if (isEdit && student) {
+      // Sanitize course data to ensure we only use the program code
+      let sanitizedCourse = student.course || "";
+      
+      // If course contains parentheses, extract just the code part
+      if (sanitizedCourse.includes('(') && sanitizedCourse.includes(')')) {
+        // Extract code from parentheses (e.g., "Bachelor of Science in Computer Science (BSCS)" -> "BSCS")
+        const match = sanitizedCourse.match(/\(([^)]+)\)$/);
+        if (match && match[1]) {
+          sanitizedCourse = match[1].trim();
+        }
+      }
+      
+      // If course is longer than expected (like full program name), try to extract code
+      if (sanitizedCourse.length > 10) {
+        console.warn(`⚠️ Unexpected course format: "${sanitizedCourse}", trying to extract code...`);
+        // Try to find a typical program code pattern (letters followed by 2-3 numbers)
+        const codeMatch = sanitizedCourse.match(/([A-Z]{2,4}[0-9]{2,4})/);
+        if (codeMatch) {
+          sanitizedCourse = codeMatch[1];
+          console.log(`✅ Extracted code: ${sanitizedCourse}`);
+        }
+      }
+      
+      console.log(`🔍 Form data - Original course: "${student.course}", Sanitized: "${sanitizedCourse}"`);
+      
       // Handle orphaned students (course is null)
       const safeStudent = {
         ...student,
-        course: student.course || "" // Convert null to empty string for form
+        course: sanitizedCourse || "" // Use sanitized code for form
       };
       setFormData(safeStudent);
     } else {
@@ -190,6 +223,110 @@ function StudentForm({ onSuccess, student, onClose }) {
     setErrorMessage("");
     setFieldErrors(prev => ({ ...prev, [e.target.name]: null }));
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  // Photo upload handlers
+  const validatePhotoFile = (file) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    if (!allowedTypes.includes(file.type)) {
+      return 'Only JPEG, PNG, and WebP images are allowed';
+    }
+    if (file.size > maxSize) {
+      return 'File size must be less than 5MB';
+    }
+    return null;
+  };
+
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file
+    const validationError = validatePhotoFile(file);
+    if (validationError) {
+      setPhotoError(validationError);
+      return;
+    }
+
+    setPhotoError("");
+    setSelectedPhoto(file);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPhotoPreview(e.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePhotoUpload = async () => {
+    if (!selectedPhoto || !formData.id) {
+      setPhotoError("Please provide a student ID first");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setPhotoError("");
+
+    try {
+      const response = await api.uploadStudentPhoto(formData.id, selectedPhoto);
+      showSuccessToast("Photo uploaded successfully!");
+      
+      // Update student data to reflect new photo
+      const updatedStudentData = {
+        ...student,
+        profile_photo_url: response.data.photo_url,
+        profile_photo_filename: response.data.filename
+      };
+      
+      // Clear the upload state
+      setSelectedPhoto(null);
+      setPhotoPreview(null);
+      
+      // Update the student data for immediate UI update
+      if (onSuccess) {
+        onSuccess(updatedStudentData, 'photo_update');
+      }
+    } catch (err) {
+      console.error('Photo upload error:', err);
+      setPhotoError(err.response?.data?.error || 'Failed to upload photo');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!isEdit || !student?.profile_photo_filename) return;
+
+    const result = await window.confirm("Are you sure you want to remove this photo?");
+    if (!result) return;
+
+    try {
+      await api.deleteStudentPhoto(student.id);
+      showSuccessToast("Photo removed successfully!");
+      
+      // Update student data to reflect removed photo
+      const updatedStudentData = {
+        ...student,
+        profile_photo_url: null,
+        profile_photo_filename: null
+      };
+      
+      if (onSuccess) {
+        onSuccess(updatedStudentData, 'photo_update');
+      }
+    } catch (err) {
+      console.error('Photo removal error:', err);
+      showErrorToast('Failed to remove photo');
+    }
+  };
+
+  const clearPhotoSelection = () => {
+    setSelectedPhoto(null);
+    setPhotoPreview(null);
+    setPhotoError("");
   };
 
   // ✅ Enhanced validation function
@@ -471,7 +608,7 @@ function StudentForm({ onSuccess, student, onClose }) {
           <option value="">Select a program</option>
           {programs.map((program) => (
             <option key={program.code} value={program.code}>
-              {program.name} ({program.code})
+              {program.name}
             </option>
           ))}
         </select>
@@ -530,6 +667,156 @@ function StudentForm({ onSuccess, student, onClose }) {
           <span id="gender-error" className="modal-field-error" role="alert">
             {fieldErrors.gender}
           </span>
+        )}
+      </div>
+
+      {/* Photo Upload Section */}
+      <div className="form-group">
+        <label className="form-label">
+          Profile Photo
+        </label>
+        
+        {/* Current Photo Display (for editing existing students) */}
+        {isEdit && student?.profile_photo_url && !selectedPhoto && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            marginBottom: '16px',
+            padding: '16px',
+            border: '1px solid #e2e8f0',
+            borderRadius: '8px',
+            backgroundColor: '#f8fafc'
+          }}>
+            <StudentAvatar 
+              student={student} 
+              size={60}
+              showBorder={false}
+              backgroundColor="#ffffff"
+            />
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#4a5568' }}>
+                Current profile photo
+              </p>
+              <button
+                type="button"
+                onClick={handleRemovePhoto}
+                className="btn btn-danger btn-sm"
+                style={{ padding: '6px 12px', fontSize: '12px' }}
+              >
+                <FiX size={14} style={{ marginRight: '4px' }} />
+                Remove Photo
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Photo Selection Area */}
+        <div className="photo-upload-area" style={{
+          border: '2px dashed #cbd5e0',
+          borderRadius: '8px',
+          padding: '24px',
+          textAlign: 'center',
+          backgroundColor: '#f7fafc',
+          transition: 'all 0.2s ease',
+          cursor: 'pointer',
+          position: 'relative'
+        }}>
+          {photoPreview ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+              <img 
+                src={photoPreview} 
+                alt="Preview" 
+                style={{
+                  width: '120px',
+                  height: '120px',
+                  objectFit: 'cover',
+                  borderRadius: '50%',
+                  border: '2px solid #e2e8f0'
+                }}
+              />
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={handlePhotoUpload}
+                  disabled={isUploadingPhoto || !formData.id}
+                  className="btn btn-primary btn-sm"
+                >
+                  {isUploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearPhotoSelection}
+                  disabled={isUploadingPhoto}
+                  className="btn btn-secondary btn-sm"
+                >
+                  <FiX size={14} style={{ marginRight: '4px' }} />
+                  Clear
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+              <FiCamera size={32} color="#a0aec0" />
+              <div>
+                <p style={{ margin: '0', fontSize: '16px', color: '#4a5568' }}>
+                  Upload Profile Photo
+                </p>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#718096' }}>
+                  Drag & drop an image here, or click to select
+                </p>
+                <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#a0aec0' }}>
+                  JPEG, PNG, WebP • Max 5MB
+                </p>
+              </div>
+            </div>
+          )}
+          
+          <input
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            onChange={handlePhotoSelect}
+            style={{
+              position: 'absolute',
+              width: '100%',
+              height: '100%',
+              opacity: 0,
+              cursor: 'pointer'
+            }}
+            disabled={isUploadingPhoto}
+          />
+        </div>
+
+        {/* Photo Upload Error */}
+        {photoError && (
+          <span className="modal-field-error" role="alert" style={{ marginTop: '8px' }}>
+            {photoError}
+          </span>
+        )}
+
+        {/* Upload Progress */}
+        {isUploadingPhoto && (
+          <div style={{ 
+            marginTop: '16px', 
+            padding: '12px', 
+            backgroundColor: '#e6fffa', 
+            borderRadius: '6px',
+            border: '1px solid #81e6d9'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid #4fd1c7',
+                borderTop: '2px solid transparent',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }}></div>
+              <span style={{ fontSize: '14px', color: '#285e61' }}>
+                Uploading photo...
+              </span>
+            </div>
+          </div>
         )}
       </div>
 

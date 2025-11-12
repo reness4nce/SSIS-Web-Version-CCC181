@@ -1,4 +1,4 @@
-// src/services/api.js
+// src/services/api.jsx
 import axios from "axios";
 
 // This apiClient is for your main API endpoints (/colleges, /students, etc.)
@@ -155,6 +155,20 @@ const api = {
   updateStudent(id, data) { return apiClient.put(`/students/${id}`, data); },
   deleteStudent(id) { return apiClient.delete(`/students/${id}`); },
   validateProgramCode(code) { return apiClient.get(`/students/validate-program/${code}`); },
+
+  // Student Photo Upload
+  uploadStudentPhoto(studentId, file) {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return apiClient.post(`/students/${studentId}/photo`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  deleteStudentPhoto(studentId) {
+    return apiClient.delete(`/students/${studentId}/photo`);
+  },
 };
 
 export default api;

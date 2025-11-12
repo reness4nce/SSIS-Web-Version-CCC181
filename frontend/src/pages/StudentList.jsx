@@ -5,7 +5,8 @@ import { FiArrowUp, FiArrowDown, FiSearch, FiChevronDown, FiEdit, FiTrash2 } fro
 import { showConfirmDialog, showSuccessToast, showErrorToast } from '../utils/alert';
 import Modal from '../components/Modal';
 import StudentForm from './StudentForm';
-import { useDebounce } from 'use-debounce'; // Install with: npm i use-debounce
+import StudentAvatar from '../components/StudentAvatar';
+import { useDebounce } from 'use-debounce';
 
 const StudentList = () => {
   const [students, setStudents] = useState([]);
@@ -189,8 +190,6 @@ const StudentList = () => {
                 <div className="search-spinner" aria-hidden="true"></div>
               </div>
             </div>
-
-
           </div>
 
           <button className="btn add-btn" onClick={openAddModal}>
@@ -203,6 +202,9 @@ const StudentList = () => {
         <table>
           <thead>
             <tr>
+              <th className="col-avatar">
+                Photo
+              </th>
               <th className="col-id" onClick={() => handleSort('id')} style={getSortButtonStyle('id')}>
                 ID {renderSortArrow('id')}
                 {sortParams.sort === 'id' && (
@@ -258,6 +260,9 @@ const StudentList = () => {
             {students && students.length > 0 ? (
               students.map((student) => (
                 <tr key={student.id}>
+                  <td className="avatar-container">
+                    <StudentAvatar student={student} size={36} />
+                  </td>
                   <td>{student.id || 'N/A'}</td>
                   <td>{student.firstname || 'N/A'}</td>
                   <td>{student.lastname || 'N/A'}</td>
@@ -290,7 +295,7 @@ const StudentList = () => {
               ))
             ) : (
               <tr>
-                <td colSpan="7" className="empty-state">
+                <td colSpan="8" className="empty-state">
                   <div className="empty-state-icon">
                     {hasSearched && (searchParams.search || searchParams.filter !== 'all') ? '🔍' : '👥'}
                   </div>

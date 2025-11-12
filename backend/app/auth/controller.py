@@ -4,16 +4,16 @@ from wtforms import StringField, PasswordField, validators
 from wtforms.validators import DataRequired, Email, EqualTo, Length, ValidationError
 import re
 
-# Updated imports for Supabase models
+
 from .models import User
 from ..college.models import College
 from ..program.models import Program
 from ..student.models import Student
 
-# Your Blueprint is correct
+
 auth_bp = Blueprint('auth', __name__)
 
-# --- WTForms for Signup ---
+
 class SignupForm(FlaskForm):
     username = StringField('Username', validators=[
         DataRequired(message='Username is required'),
@@ -52,25 +52,25 @@ class SignupForm(FlaskForm):
         if user:
             raise ValidationError('Email already exists. Please use a different email address.')
 
-# --- Your validation functions are excellent and are preserved ---
+
 def validate_login_data(data):
-    # (Your existing validation logic is preserved here)
+
     errors = []
     if not data or 'username' not in data or not data['username']: errors.append('username is required')
     if not data or 'password' not in data or not data['password']: errors.append('password is required')
     return errors
 
 def validate_user_data(data):
-    # (Your existing validation logic is preserved here)
+ 
     errors = []
-    # ... (code omitted for brevity)
+  
     return errors
 
-# --- API Endpoints Updated for Supabase ---
+
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    """User login endpoint"""
+    """User login endpoint - NOW USES SERVICE_ROLE AUTHENTICATION"""
     try:
         data = request.get_json()
         if not data:
@@ -83,23 +83,22 @@ def login():
             return jsonify({'errors': errors}), 400
 
         username = data['username'].strip()
-        print(f"Login attempt: Looking up user '{username}'")
+        password = data['password']
+        print(f"Login attempt: Authenticating user '{username}' using service_role")
 
-        user_data = User.get_by_username(username)
-        print(f"Login attempt: User lookup result: {user_data is not None}")
 
-        # Check if user exists and password is correct
+        from ..supabase import auth_verify_user_credentials
+
+       
+        user_data = auth_verify_user_credentials(username, password)
+
         if not user_data:
-            print(f"Login attempt: User '{username}' not found")
-            return jsonify({'error': 'Invalid username or password'}), 401
-
-        if not User.verify_password(user_data['password_hash'], data['password']):
-            print(f"Login attempt: Invalid password for user '{username}'")
+            print(f"Login attempt: Authentication failed for user '{username}'")
             return jsonify({'error': 'Invalid username or password'}), 401
 
         print(f"Login attempt: Successful login for user '{username}'")
 
-        # Create a server-side session for the user
+
         session.clear()
         session['user_id'] = user_data['id']
         session['username'] = user_data['username']
@@ -129,11 +128,11 @@ def logout():
 def status():
     """Check if a user is authenticated via their session cookie."""
     if 'user_id' not in session:
-        return jsonify({'isAuthenticated': False}), 200 # Return 200 OK, as this is a status check
+        return jsonify({'isAuthenticated': False}), 200 
 
     user_data = User.get_by_id(session['user_id'])
     if not user_data:
-        session.clear() # The user ID in the session is invalid
+        session.clear() 
         return jsonify({'isAuthenticated': False}), 200
 
     return jsonify({
@@ -217,7 +216,7 @@ def signup():
 def get_dashboard_stats():
     """Get dashboard statistics aggregating data from all entities"""
     try:
-        # Get total counts using Supabase models
+        
         total_students = Student.count_students()
         total_programs = len(Program.get_all_programs())
         total_colleges = len(College.get_all_colleges())
@@ -236,9 +235,9 @@ def get_dashboard_stats():
 def get_dashboard_charts():
     """Get chart data for dashboard visualizations"""
     try:
-        # Students by Program using Supabase models
+       
         try:
-            # Try to use the enhanced get_program_stats method
+            
             program_stats = Program.get_program_stats()
             students_by_program = [
                 {
@@ -250,7 +249,7 @@ def get_dashboard_charts():
             ]
         except Exception as e:
             print(f"Error getting program stats: {e}")
-            # Fallback to direct student counting
+          
             programs = Program.get_all_programs()
             students_by_program = []
             for program in programs or []:
@@ -269,9 +268,9 @@ def get_dashboard_charts():
                         "student_count": 0
                     })
 
-        # Students by College using Supabase models
+        
         try:
-            # Try to use the enhanced get_college_stats method
+            
             college_stats = College.get_college_stats()
             students_by_college = [
                 {
@@ -289,7 +288,7 @@ def get_dashboard_charts():
             for college in colleges or []:
                 try:
                     student_count = College.get_student_count(college['code'])
-                    students_by_college.append({
+                    students_by_colploye.append({
                         "college_code": college['code'],
                         "college_name": college['name'],
                         "student_count": student_count
@@ -310,6 +309,3 @@ def get_dashboard_charts():
     except Exception as e:
         print(f"Dashboard charts error: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
-# Note: The 'register', 'me', and 'check' routes from your file are also great,
-# but for simplicity, I am focusing on the three essential for login/logout/status.

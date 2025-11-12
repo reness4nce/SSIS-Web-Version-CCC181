@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 const Pagination = ({ currentPage, totalPages, onPageChange, totalItems = 0, itemsPerPage = 10 }) => {
