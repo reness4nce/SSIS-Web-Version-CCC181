@@ -301,32 +301,49 @@ class Student:
 
     @staticmethod
     def upload_profile_photo(student_id, file_data, filename):
-        """Upload profile photo to Supabase Storage"""
+        """Upload profile photo to Supabase Storage - FIXED: Delete old photo before uploading new one"""
         try:
-            # Generate unique filename
+            # Generate unique filename for new photo
             file_extension = os.path.splitext(filename)[1].lower()
             unique_filename = f"{student_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{file_extension}"
 
             logger.debug(f"Uploading photo: {unique_filename}")
 
-            # Upload to Supabase Storage
+            # Check if student already has a photo that needs to be deleted
+            existing_student = Student.get_by_id(student_id)
+            old_filename = None
+            if existing_student and existing_student.get('profile_photo_filename'):
+                old_filename = existing_student['profile_photo_filename']
+                logger.debug(f"Found existing photo to delete: {old_filename}")
+
+            # Upload new photo to Supabase Storage
             bucket = supabase_manager.get_service_role_client().storage.from_('student-photos')
             response = bucket.upload(unique_filename, file_data, {
                 'content-type': f'image/{file_extension[1:]}'
             })
 
             if response:
-                # Get public URL
+                # Get public URL for new photo
                 public_url = bucket.get_public_url(unique_filename)
 
-                # Update student record
+                # Only delete old photo after new one is successfully uploaded
+                if old_filename:
+                    try:
+                        logger.debug(f"Deleting old photo: {old_filename}")
+                        bucket.remove([old_filename])
+                        logger.info(f"Old photo deleted: {old_filename}")
+                    except Exception as e:
+                        logger.warning(f"Could not delete old photo {old_filename}: {e}")
+                        # Don't fail the entire operation if old photo deletion fails
+
+                # Update student record with new photo info
                 Student.update_student(
                     student_id,
                     profile_photo_url=public_url,
                     profile_photo_filename=unique_filename
                 )
 
-                logger.info(f"Photo uploaded: {unique_filename}")
+                logger.info(f"Photo uploaded and old photo cleaned up: {unique_filename}")
 
                 return {
                     'success': True,
@@ -351,12 +368,11 @@ class Student:
             response = bucket.remove([filename])
 
             if response:
-                # Update student record
-                Student.update_student(
-                    student_id,
-                    profile_photo_url=None,
-                    profile_photo_filename=None
-                )
+                # Update student record - use service role client to bypass RLS for photo clearance
+                supabase_manager.get_service_role_client().table('student').update({
+                    'profile_photo_url': None,
+                    'profile_photo_filename': None
+                }).eq('id', student_id).execute()
 
                 logger.info(f"Photo deleted: {filename}")
                 return {'success': True}

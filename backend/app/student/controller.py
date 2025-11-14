@@ -7,6 +7,7 @@ import os
 from .models import Student
 from ..program.models import Program
 from ..auth.controller import require_auth
+from ..cache import clear_dashboard_cache
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -22,16 +23,15 @@ ALLOWED_IMAGE_TYPES = ['jpeg', 'jpg', 'png', 'webp']
 
 
 # ============================================
-# CACHING 
+# PROGRAM VALIDATION
 # ============================================
-@lru_cache(maxsize=128)
-def get_valid_programs_cached():
-    """Cache valid programs for faster validation"""
+def get_valid_programs():
+    """Get all valid programs for validation (always fresh from database)"""
     try:
         programs = Program.get_all_programs()
         return {p['code'].upper(): p for p in programs}
     except Exception as e:
-        logger.error(f"Error caching programs: {e}")
+        logger.error(f"Error fetching programs: {e}")
         return {}
 
 
@@ -77,9 +77,9 @@ def validate_student_data(data, student_id=None):
         if data["gender"].lower() not in valid_genders:
             errors.append("Gender must be Male, Female, Non-binary, Prefer not to say, or Other")
 
-    # Validate program (CACHED - MEDIUM PRIORITY #8)
+    # Validate program (always fresh from database)
     if "course" in data and data["course"]:
-        valid_programs = get_valid_programs_cached()
+        valid_programs = get_valid_programs()
         course_upper = data["course"].upper()
         
         if course_upper not in valid_programs:
@@ -166,7 +166,7 @@ def get_students():
         paginated_students = students[start:end]
 
         # Enrich with course_name for display
-        valid_programs = get_valid_programs_cached()
+        valid_programs = get_valid_programs()
         for student in paginated_students:
             course_code = student.get('course')
             if course_code and course_code.upper() in valid_programs:
@@ -206,22 +206,128 @@ def get_student(student_id):
 @student_bp.route("", methods=["POST"])
 @require_auth
 def create_student():
-    """Create new student"""
+    """Create new student with optional photo upload"""
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
+        # Check if this is a multipart/form-data request (with photo)
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            return create_student_with_photo()
+        else:
+            # Handle traditional JSON request (backward compatibility)
+            return create_student_json()
+
+    except Exception as e:
+        logger.error(f"Error creating student: {e}", exc_info=True)
+        return jsonify({"error": "Failed to create student"}), 500
+
+
+def create_student_json():
+    """Create student from JSON data (backward compatible)"""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    errors = validate_student_data(data)
+    if errors:
+        logger.warning(f"Student creation validation failed: {errors}")
+        return jsonify({"errors": errors}), 400
+
+    # Get exact program code
+    valid_programs = get_valid_programs()
+    course_upper = data["course"].upper()
+    actual_program = valid_programs.get(course_upper)
+
+    new_student = Student.create_student(
+        student_id=data["id"].upper().strip(),
+        firstname=data["firstname"].strip(),
+        lastname=data["lastname"].strip(),
+        course=actual_program["code"] if actual_program else course_upper,
+        year=int(data["year"]),
+        gender=data["gender"].capitalize(),
+        profile_photo_url=data.get("profile_photo_url"),
+        profile_photo_filename=data.get("profile_photo_filename")
+    )
+
+    logger.info(f"Student created: {new_student['id']}")
+
+    # Clear dashboard cache since stats changed
+    clear_dashboard_cache()
+
+    return jsonify({
+        "message": "Student created successfully",
+        "student": new_student
+    }), 201
+
+
+def create_student_with_photo():
+    """Create student with photo upload"""
+    try:
+        # Get form data
+        student_id = request.form.get('id')
+        firstname = request.form.get('firstname')
+        lastname = request.form.get('lastname')
+        course = request.form.get('course')
+        year = request.form.get('year')
+        gender = request.form.get('gender')
+
+        if not all([student_id, firstname, lastname, course, year, gender]):
+            return jsonify({"error": "All student fields are required"}), 400
+
+        # Prepare data for validation
+        data = {
+            'id': student_id,
+            'firstname': firstname,
+            'lastname': lastname,
+            'course': course,
+            'year': year,
+            'gender': gender
+        }
 
         errors = validate_student_data(data)
         if errors:
-            logger.warning(f"Student creation validation failed: {errors}")
+            logger.warning(f"Student creation with photo validation failed: {errors}")
             return jsonify({"errors": errors}), 400
 
         # Get exact program code
-        valid_programs = get_valid_programs_cached()
+        valid_programs = get_valid_programs()
         course_upper = data["course"].upper()
         actual_program = valid_programs.get(course_upper)
 
+        # Handle photo if provided
+        profile_photo_url = None
+        profile_photo_filename = None
+
+        photo_file = request.files.get('photo')
+        if photo_file and photo_file.filename:
+            # Validate file size
+            file_data = photo_file.read()
+            if len(file_data) > MAX_FILE_SIZE_BYTES:
+                logger.warning(f"File too large: {len(file_data)} bytes")
+                return jsonify({"error": f"File too large. Maximum size is {MAX_FILE_SIZE_MB}MB"}), 400
+
+            # Validate image format
+            filename_lower = photo_file.filename.lower()
+            if not any(filename_lower.endswith(ext) for ext in ALLOWED_IMAGE_TYPES):
+                logger.warning(f"Invalid file extension: {photo_file.filename}")
+                return jsonify({"error": f"Invalid image format. Allowed formats: {', '.join(ALLOWED_IMAGE_TYPES).upper()}"}), 400
+
+            logger.info(f"Uploading photo during student creation: {student_id.upper()}")
+
+            # Upload photo
+            result = Student.upload_profile_photo(
+                student_id=student_id.upper(),
+                file_data=file_data,
+                filename=photo_file.filename
+            )
+
+            if result['success']:
+                profile_photo_url = result['url']
+                profile_photo_filename = result['filename']
+                logger.info(f"Photo uploaded successfully during student creation: {student_id.upper()}")
+            else:
+                logger.error(f"Photo upload failed during student creation: {result.get('error')}")
+                return jsonify({"error": f"Photo upload failed: {result.get('error', 'Unknown error')}"}), 400
+
+        # Create student
         new_student = Student.create_student(
             student_id=data["id"].upper().strip(),
             firstname=data["firstname"].strip(),
@@ -229,26 +335,44 @@ def create_student():
             course=actual_program["code"] if actual_program else course_upper,
             year=int(data["year"]),
             gender=data["gender"].capitalize(),
-            profile_photo_url=data.get("profile_photo_url"),
-            profile_photo_filename=data.get("profile_photo_filename")
+            profile_photo_url=profile_photo_url,
+            profile_photo_filename=profile_photo_filename
         )
 
-        logger.info(f"Student created: {new_student['id']}")
+        logger.info(f"Student with photo created: {new_student['id']}")
+
+        # Clear dashboard cache since stats changed
+        clear_dashboard_cache()
 
         return jsonify({
-            "message": "Student created successfully",
+            "message": "Student created successfully" + (" with photo" if profile_photo_filename else ""),
             "student": new_student
         }), 201
 
     except Exception as e:
-        logger.error(f"Error creating student: {e}", exc_info=True)
+        logger.error(f"Error creating student with photo: {e}", exc_info=True)
         return jsonify({"error": "Failed to create student"}), 500
 
 
 @student_bp.route("/<student_id>", methods=["PUT"])
 @require_auth
 def update_student(student_id):
-    """Update existing student"""
+    """Update existing student with optional photo upload"""
+    try:
+        # Check if this is a multipart/form-data request (with photo)
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            return update_student_with_photo(student_id)
+        else:
+            # Handle traditional JSON request (backward compatibility)
+            return update_student_json(student_id)
+
+    except Exception as e:
+        logger.error(f"Error updating student: {e}", exc_info=True)
+        return jsonify({"error": "Failed to update student"}), 500
+
+
+def update_student_json(student_id):
+    """Update student from JSON data (backward compatible)"""
     try:
         student = Student.get_by_id(student_id.upper())
         if not student:
@@ -290,13 +414,122 @@ def update_student(student_id):
         updated_student = Student.get_by_id(student_id.upper())
         logger.info(f"Student updated: {student_id.upper()}")
 
+        # Clear dashboard cache since stats may have changed
+        clear_dashboard_cache()
+
         return jsonify({
             "message": "Student updated successfully",
             "student": updated_student
         }), 200
 
     except Exception as e:
-        logger.error(f"Error updating student: {e}", exc_info=True)
+        logger.error(f"Error updating student with JSON: {e}", exc_info=True)
+        return jsonify({"error": "Failed to update student"}), 500
+
+
+def update_student_with_photo(student_id):
+    """Update student with photo upload"""
+    try:
+        student = Student.get_by_id(student_id.upper())
+        if not student:
+            return jsonify({"error": "Student not found"}), 404
+
+        # Get form data
+        data = {
+            'firstname': request.form.get('firstname'),
+            'lastname': request.form.get('lastname'),
+            'course': request.form.get('course'),
+            'year': request.form.get('year'),
+            'gender': request.form.get('gender')
+        }
+
+        # Remove None values for validation
+        data = {k: v for k, v in data.items() if v is not None}
+
+        # Validate only provided fields (partial update)
+        errors = []
+        if data:
+            # Only validate provided fields
+            temp_data = dict(student)  # Start with existing data
+            temp_data.update(data)  # Update with new values
+            errors = validate_student_data(temp_data, student_id.upper())
+
+        if errors:
+            logger.warning(f"Student update with photo validation failed: {errors}")
+            return jsonify({"errors": errors}), 400
+
+        # Handle year conversion
+        year_value = None
+        if data.get("year"):
+            try:
+                year_value = int(data["year"])
+            except (ValueError, TypeError):
+                year_value = None
+
+        # Handle photo if provided
+        profile_photo_url = None
+        profile_photo_filename = None
+
+        photo_file = request.files.get('photo')
+        if photo_file and photo_file.filename:
+            # Validate file size
+            file_data = photo_file.read()
+            if len(file_data) > MAX_FILE_SIZE_BYTES:
+                logger.warning(f"File too large: {len(file_data)} bytes")
+                return jsonify({"error": f"File too large. Maximum size is {MAX_FILE_SIZE_MB}MB"}), 400
+
+            # Validate image format
+            filename_lower = photo_file.filename.lower()
+            if not any(filename_lower.endswith(ext) for ext in ALLOWED_IMAGE_TYPES):
+                logger.warning(f"Invalid file extension: {photo_file.filename}")
+                return jsonify({"error": f"Invalid image format. Allowed formats: {', '.join(ALLOWED_IMAGE_TYPES).upper()}"}), 400
+
+            logger.info(f"Uploading photo during student update: {student_id.upper()}")
+
+            # Upload photo
+            result = Student.upload_profile_photo(
+                student_id=student_id.upper(),
+                file_data=file_data,
+                filename=photo_file.filename
+            )
+
+            if result['success']:
+                profile_photo_url = result['url']
+                profile_photo_filename = result['filename']
+                logger.info(f"Photo uploaded successfully during student update: {student_id.upper()}")
+            else:
+                logger.error(f"Photo upload failed during student update: {result.get('error')}")
+                return jsonify({"error": f"Photo upload failed: {result.get('error', 'Unknown error')}"}), 400
+
+        # Update student data (only provided fields)
+        success = Student.update_student(
+            student_id=student_id.upper(),
+            firstname=data.get("firstname", "").strip() if data.get("firstname") else None,
+            lastname=data.get("lastname", "").strip() if data.get("lastname") else None,
+            course=data.get("course", "").upper().strip() if data.get("course") else None,
+            year=year_value,
+            gender=data.get("gender", "").capitalize() if data.get("gender") else None,
+            profile_photo_url=profile_photo_url,
+            profile_photo_filename=profile_photo_filename
+        )
+
+        if not success:
+            return jsonify({"error": "Student not found or no changes made"}), 404
+
+        updated_student = Student.get_by_id(student_id.upper())
+        logger.info(f"Student with photo updated: {student_id.upper()}")
+
+        # Clear dashboard cache since stats may have changed
+        clear_dashboard_cache()
+
+        photo_message = " with photo" if profile_photo_filename else ""
+        return jsonify({
+            "message": f"Student updated successfully{photo_message}",
+            "student": updated_student
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error updating student with photo: {e}", exc_info=True)
         return jsonify({"error": "Failed to update student"}), 500
 
 
@@ -315,6 +548,10 @@ def delete_student(student_id):
             return jsonify({"error": "Student not found"}), 404
 
         logger.info(f"Student deleted: {student_id.upper()}")
+
+        # Clear dashboard cache since stats changed
+        clear_dashboard_cache()
+
         return jsonify({"message": "Student deleted successfully"}), 200
 
     except Exception as e:
@@ -417,7 +654,7 @@ def delete_student_photo(student_id):
 def validate_program_code(program_code):
     """Validate program code"""
     try:
-        valid_programs = get_valid_programs_cached()
+        valid_programs = get_valid_programs()
         course_upper = program_code.upper()
 
         if course_upper not in valid_programs:
