@@ -13,7 +13,7 @@ class Student:
     """Student model with Supabase operations"""
 
     @staticmethod
-    def create_table():
+    def create_table(): 
         """Create student table"""
         Program.create_table()
 

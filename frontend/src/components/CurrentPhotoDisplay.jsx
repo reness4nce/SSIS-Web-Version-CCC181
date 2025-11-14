@@ -81,17 +81,8 @@ const CurrentPhotoDisplay = ({
             textAlign: 'center',
             padding: '20px'
           }}>
-            {imageError ? (
-              <>
-                <FiAlertCircle size={32} style={{ marginBottom: '8px', color: '#f56565' }} />
-                <span style={{ fontSize: '12px', color: '#f56565' }}>Failed to load</span>
-              </>
-            ) : (
-              <>
-                <FiUser size={48} style={{ marginBottom: '8px' }} />
-                <span style={{ fontSize: '12px' }}>No Photo</span>
-              </>
-            )}
+            <FiUser size={48} style={{ marginBottom: '8px' }} />
+            <span style={{ fontSize: '12px' }}>No Photo</span>
           </div>
         )}
         
@@ -206,39 +197,41 @@ const CurrentPhotoDisplay = ({
           }}
         >
           <FiCamera size={14} />
-          Change Photo
+          {hasPhoto ? 'Change Photo' : 'Upload Photo'}
         </button>
-        
-        <button
-          type="button"
-          onClick={onRemovePhoto}
-          className="btn btn-outline-danger"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '8px 16px',
-            fontSize: '13px',
-            fontWeight: '500',
-            borderRadius: '6px',
-            border: '2px solid #e53e3e',
-            color: '#e53e3e',
-            backgroundColor: 'transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.backgroundColor = '#e53e3e';
-            e.target.style.color = '#ffffff';
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.backgroundColor = 'transparent';
-            e.target.style.color = '#e53e3e';
-          }}
-        >
-          <FiTrash2 size={14} />
-          Remove Photo
-        </button>
+
+        {hasPhoto && (
+          <button
+            type="button"
+            onClick={onRemovePhoto}
+            className="btn btn-outline-danger"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 16px',
+              fontSize: '13px',
+              fontWeight: '500',
+              borderRadius: '6px',
+              border: '2px solid #e53e3e',
+              color: '#e53e3e',
+              backgroundColor: 'transparent',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = '#e53e3e';
+              e.target.style.color = '#ffffff';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'transparent';
+              e.target.style.color = '#e53e3e';
+            }}
+          >
+            <FiTrash2 size={14} />
+            Remove Photo
+          </button>
+        )}
       </div>
     </div>
   );
