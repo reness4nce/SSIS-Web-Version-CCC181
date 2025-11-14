@@ -1,7 +1,3 @@
-"""
-Supabase integration for database operations
-FINAL FIX - REMOVED CASE CONVERSION LOGIC
-"""
 import os
 import re
 from supabase import create_client, Client

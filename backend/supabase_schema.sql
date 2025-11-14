@@ -172,7 +172,7 @@ CREATE OR REPLACE FUNCTION get_college_stats()
 RETURNS TABLE(college_code VARCHAR, college_name VARCHAR, program_count BIGINT, student_count BIGINT) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
+    SELECT
         c.code as college_code,
         c.name as college_name,
         COUNT(DISTINCT p.code) as program_count,
@@ -182,6 +182,24 @@ BEGIN
     LEFT JOIN student s ON p.code = s.course
     GROUP BY c.code, c.name
     ORDER BY c.code;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION get_program_stats()
+RETURNS TABLE(program_code VARCHAR, program_name VARCHAR, college_code VARCHAR, college_name VARCHAR, student_count BIGINT) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        p.code as program_code,
+        p.name as program_name,
+        p.college as college_code,
+        c.name as college_name,
+        COUNT(s.id) as student_count
+    FROM program p
+    LEFT JOIN college c ON p.college = c.code
+    LEFT JOIN student s ON p.code = s.course
+    GROUP BY p.code, p.name, p.college, c.name
+    ORDER BY student_count DESC, p.code;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
