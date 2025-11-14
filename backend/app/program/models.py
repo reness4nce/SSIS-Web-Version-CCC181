@@ -83,21 +83,52 @@ class Program:
 
     @staticmethod
     def get_program_stats():
-        """Get program statistics using Supabase views and functions"""
+        """Get program statistics with student counts using optimized RPC query"""
         try:
-            # Try to use Supabase view first
-            result = supabase_manager.get_client().table('program_with_college').select('*').execute()
-            return result.data or []
-        except Exception as e:
-            print(f"Error getting program stats via view: {e}")
-        
-        # Fallback to direct Supabase query
-        try:
-            result = supabase_manager.get_client().from_('program').select('*, college:college!inner(name)').execute()
-            return result.data or []
-        except Exception as e:
-            print(f"Error getting program stats: {e}")
+            # Use optimized RPC function for single query efficiency
+            result = supabase_manager.get_client().rpc('get_program_stats').execute()
+            if result.data:
+                return [
+                    {
+                        'code': item['program_code'],
+                        'name': item['program_name'],
+                        'college': item['college_code'],
+                        'college_name': item['college_name'],
+                        'student_count': item['student_count'] or 0
+                    }
+                    for item in result.data
+                ]
             return []
+        except Exception as e:
+            print(f"RPC get_program_stats failed, falling back to individual queries: {e}")
+            # Fallback to the old method if RPC fails
+            try:
+                programs_result = supabase_manager.get_client().table('program').select('code, name, college').execute()
+                programs = programs_result.data or []
+
+                stats = []
+                for program in programs:
+                    try:
+                        student_count = Program.get_student_count(program['code'])
+                        stats.append({
+                            'code': program['code'],
+                            'name': program['name'],
+                            'college': program.get('college'),
+                            'student_count': student_count
+                        })
+                    except Exception as e2:
+                        print(f"Error getting student count for program {program['code']}: {e2}")
+                        stats.append({
+                            'code': program['code'],
+                            'name': program['name'],
+                            'college': program.get('college'),
+                            'student_count': 0
+                        })
+
+                return stats
+            except Exception as e2:
+                print(f"Error getting program stats: {e2}")
+                return []
 
     @staticmethod
     def get_programs_with_college_info():

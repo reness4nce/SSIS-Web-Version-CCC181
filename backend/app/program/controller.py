@@ -162,6 +162,8 @@ def create_program():
             college=data["college"].upper().strip()
         )
 
+        # Note: Programs are now fetched fresh from database for validation (no cache to clear)
+
         return jsonify({
             "message": "Program created successfully",
             "program": new_program
@@ -217,6 +219,8 @@ def update_program(program_code):
         if not success:
             return jsonify({"error": "Failed to update program"}), 500
 
+        # Note: Programs are now fetched fresh from database for validation (no cache to clear)
+
         # Get updated program using the new code if it changed
         final_code = update_data.get('code', program_code)
         updated_program = Program.get_by_code(final_code)
@@ -252,6 +256,8 @@ def delete_program(program_code):
 
         if not rows_deleted:
             return jsonify({"error": "Program not found"}), 404
+
+        # Note: Programs are now fetched fresh from database for validation (no cache to clear)
 
         return jsonify({"message": "Program deleted successfully"}), 200
 

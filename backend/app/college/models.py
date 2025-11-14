@@ -104,37 +104,45 @@ class College:
 
     @staticmethod
     def get_college_stats():
-        """Get college statistics using Supabase functions"""
+        """Get college statistics with student counts using Supabase queries"""
         try:
-            # Use Supabase RPC function
+            # Use Supabase RPC function if available
             result = supabase_manager.get_client().rpc('get_college_stats').execute()
-            return result.data or []
+            if result.data:
+                return result.data
         except Exception as e:
             print(f"Error getting college stats via RPC: {e}")
-        
-        # Fallback to direct Supabase query with join
+
+        # Fallback to direct Supabase query - get colleges and count students via programs
         try:
-            result = supabase_manager.get_client().table('college').select('''
-                code,
-                name,
-                programs:program!college(code, name)
-            ''').execute()
-            
-            # Process the results to get proper stats
+            colleges_result = supabase_manager.get_client().table('college').select('code, name').execute()
+            colleges = colleges_result.data or []
+
             stats = []
-            if result.data:
-                for college in result.data:
-                    program_count = len(college.get('programs', []))
-                    student_count = sum(len(p.get('students', [])) for p in college.get('programs', []))
-                    
+            for college in colleges:
+                try:
+                    # Count total students in all programs of this college
+                    program_codes = College.get_programs(college['code'])
+                    student_count = 0
+
+                    if program_codes:
+                        from ..program.models import Program
+                        for program_data in program_codes:
+                            student_count += Program.get_student_count(program_data['code'])
+
                     stats.append({
-                        'id': college.get('id'),
-                        'code': college['code'],
-                        'name': college['name'],
-                        'program_count': program_count,
+                        'college_code': college['code'],
+                        'college_name': college['name'],
                         'student_count': student_count
                     })
-            
+                except Exception as e:
+                    print(f"Error counting students for college {college['code']}: {e}")
+                    stats.append({
+                        'college_code': college['code'],
+                        'college_name': college['name'],
+                        'student_count': 0
+                    })
+
             return stats
         except Exception as e:
             print(f"Error getting college stats: {e}")

@@ -7,6 +7,11 @@ from .models import User
 from ..college.models import College
 from ..program.models import Program
 from ..student.models import Student
+from ..cache import (
+    get_cached_dashboard_stats,
+    get_cached_dashboard_program_charts,
+    get_cached_dashboard_college_charts
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -224,7 +229,7 @@ def signup():
 @auth_bp.route('/dashboard', methods=['GET'])
 @require_auth
 def get_dashboard_stats():
-    """Get dashboard statistics"""
+    """Get cached dashboard statistics"""
     try:
         total_students = Student.count_students()
         total_programs = len(Program.get_all_programs())
@@ -244,9 +249,9 @@ def get_dashboard_stats():
 @auth_bp.route('/dashboard/charts', methods=['GET'])
 @require_auth
 def get_dashboard_charts():
-    """Get chart data for dashboard"""
+    """Get cach chart data for dashboard"""
     try:
-        # Students by Program
+          # Students by Program
         try:
             program_stats = Program.get_program_stats()
             students_by_program = [
@@ -266,8 +271,8 @@ def get_dashboard_charts():
             college_stats = College.get_college_stats()
             students_by_college = [
                 {
-                    "college_code": col['code'],
-                    "college_name": col['name'],
+                    "college_code": col.get('college_code', col.get('code', 'Unknown')),
+                    "college_name": col.get('college_name', col.get('name', 'Unknown')),
                     "student_count": col.get('student_count', 0)
                 }
                 for col in college_stats or []
@@ -275,7 +280,6 @@ def get_dashboard_charts():
         except Exception as e:
             logger.error(f"Error getting college stats: {e}")
             students_by_college = []
-
         return jsonify({
             "students_by_program": students_by_program,
             "students_by_college": students_by_college

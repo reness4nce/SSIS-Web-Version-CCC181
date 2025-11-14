@@ -257,8 +257,8 @@ def get_college_stats():
                 "colleges": [
                     {
                         "id": stat.get('id'),
-                        "code": stat.get('code', ''),
-                        "name": stat.get('name', ''),
+                        "code": stat.get('college_code', ''),
+                        "name": stat.get('college_name', ''),
                         "program_count": stat.get('program_count', 0) or 0,
                         "student_count": stat.get('student_count', 0) or 0,
                     }
