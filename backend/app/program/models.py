@@ -46,13 +46,15 @@ class Program:
         return insert_record("program", program_data, returning="*")
 
     @staticmethod
-    def update_program(program_code, name=None, college=None):
+    def update_program(program_code, name=None, college=None, code=None):
         """Update program information"""
         update_data = {}
-        if name:
+        if name is not None:
             update_data['name'] = name
-        if college:
+        if college is not None:
             update_data['college'] = college
+        if code is not None:
+            update_data['code'] = code
 
         if not update_data:
             return None
@@ -61,7 +63,7 @@ class Program:
             "program",
             update_data,
             "code = %s",
-            params={**update_data, 'code': program_code}
+            params=[program_code]
         )
 
     @staticmethod
@@ -100,18 +102,48 @@ class Program:
     @staticmethod
     def get_programs_with_college_info():
         """Get all programs with college information using Supabase"""
+        # Skip the view approach that renames fields and use direct approach
         try:
-            # Use the view if available
-            result = supabase_manager.get_client().table('program_with_college').select('*').execute()
-            return result.data or []
-        except Exception as e:
-            print(f"Error getting programs with college info: {e}")
-            # Fallback to direct join
+            # Get all programs with basic fields first
+            programs_result = supabase_manager.get_client().table('program').select('code, name, college').execute()
+            programs = programs_result.data or []
+            
+            if not programs:
+                return []
+            
+            # Get unique college codes
+            college_codes = list(set(p.get('college') for p in programs if p.get('college')))
+            
+            # Get college names for better display
+            colleges_result = supabase_manager.get_client().table('college').select('code, name').in_('code', college_codes).execute()
+            college_map = {c['code']: c['name'] for c in (colleges_result.data or [])}
+            
+            # Combine data ensuring correct field names for frontend
+            combined_programs = []
+            for program in programs:
+                clean_program = {
+                    'code': program.get('code', ''),
+                    'name': program.get('name', ''),  # Ensure 'name' field, not 'program_name'
+                    'college': program.get('college', ''),
+                    'college_name': college_map.get(program.get('college'), '')
+                }
+                combined_programs.append(clean_program)
+            
+            print(f"✅ Successfully processed {len(combined_programs)} programs with correct field names")
+            return combined_programs
+            
+        except Exception as e2:
+            print(f"Error with manual approach: {e2}")
+            # Final fallback: just return basic program data with correct field names
             try:
-                result = supabase_manager.get_client().table('program').select('code, name, college, college_name:college(name)').execute()
-                return result.data or []
-            except Exception as e2:
-                print(f"Error with fallback query: {e2}")
+                result = supabase_manager.get_client().table('program').select('code, name, college').execute()
+                programs = result.data or []
+                for program in programs:
+                    program['college_name'] = ''
+                print(f"✅ Using final fallback: returning {len(programs)} programs with correct field structure")
+                return programs
+            except Exception as e3:
+                print(f"Error with final fallback: {e3}")
                 return []
 
     def __init__(self, code, name, college):

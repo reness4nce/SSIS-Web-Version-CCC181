@@ -65,23 +65,23 @@ def get_programs():
         if college_filter:
             programs = [p for p in programs if p['college'].upper() == college_filter.upper()]
         
-        # Apply search filter
+        # Apply search filter (null-safe)
         if search:
             search_term = search.lower()
             if filter_field == "all":
-                programs = [p for p in programs if 
-                           search_term in p['code'].lower() or 
-                           search_term in p['name'].lower() or 
-                           search_term in p.get('college_name', '').lower() or
-                           search_term in p['college'].lower()]
+                programs = [p for p in programs if
+                           search_term in (p.get('code') or '').lower() or
+                           search_term in (p.get('name') or '').lower() or
+                           search_term in (p.get('college_name') or '').lower() or
+                           search_term in (p.get('college') or '').lower()]
             elif filter_field == "code":
-                programs = [p for p in programs if search_term in p['code'].lower()]
+                programs = [p for p in programs if search_term in (p.get('code') or '').lower()]
             elif filter_field == "name":
-                programs = [p for p in programs if search_term in p['name'].lower()]
+                programs = [p for p in programs if search_term in (p.get('name') or '').lower()]
             elif filter_field == "college":
-                programs = [p for p in programs if 
-                           search_term in p['college'].lower() or 
-                           search_term in p.get('college_name', '').lower()]
+                programs = [p for p in programs if
+                           search_term in (p.get('college') or '').lower() or
+                           search_term in (p.get('college_name') or '').lower()]
 
         # Apply sorting
         reverse = order.lower() == "desc"
