@@ -98,18 +98,20 @@ const api = {
 
   /**
    * Gets dashboard statistics.
+   * @param {object} options - Request options including signal for AbortController
    * @returns {Promise<object>} Dashboard statistics including totals for students, programs, and colleges.
    */
-  getDashboardStats() {
-    return authApiClient.get("/auth/dashboard");
+  getDashboardStats(options = {}) {
+    return authApiClient.get("/auth/dashboard", options);
   },
 
   /**
    * Gets dashboard chart data.
+   * @param {object} options - Request options including signal for AbortController
    * @returns {Promise<object>} Chart data for students by program and college visualizations.
    */
-  getDashboardCharts() {
-    return authApiClient.get("/auth/dashboard/charts");
+  getDashboardCharts(options = {}) {
+    return authApiClient.get("/auth/dashboard/charts", options);
   },
 
   /**
@@ -151,15 +153,87 @@ const api = {
     console.log(`🔍 API: Checking student existence for ID: ${id}`);
     return apiClient.get(`/students/${id}`);
   },
-  createStudent(data) { return apiClient.post("/students", data); },
-  updateStudent(id, data) { return apiClient.put(`/students/${id}`, data); },
+  createStudent(data, photoFile = null, originalFilename = null) {
+    if (photoFile) {
+      // Create FormData for student creation with photo
+      const formData = new FormData();
+
+      // Add student data to FormData
+      Object.keys(data).forEach(key => {
+        formData.append(key, data[key]);
+      });
+
+      // Handle compressed images (Blob) - convert to File with proper filename
+      let fileToUpload = photoFile;
+      if (photoFile instanceof Blob && !(photoFile instanceof File)) {
+        // If it's a compressed Blob, we need a filename
+        const filename = originalFilename || `photo_${Date.now()}.jpg`;
+        // Create a File object from the Blob
+        fileToUpload = new File([photoFile], filename, { type: photoFile.type || 'image/jpeg' });
+      }
+
+      // Add photo file to FormData
+      formData.append('photo', fileToUpload);
+
+      return apiClient.post("/students", formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    } else {
+      // Standard JSON request for student creation without photo
+      return apiClient.post("/students", data);
+    }
+  },
+  updateStudent(id, data, photoFile = null, originalFilename = null) {
+    if (photoFile) {
+      // Create FormData for student update with photo
+      const formData = new FormData();
+
+      // Add student data to FormData
+      Object.keys(data).forEach(key => {
+        formData.append(key, data[key]);
+      });
+
+      // Handle compressed images (Blob) - convert to File with proper filename
+      let fileToUpload = photoFile;
+      if (photoFile instanceof Blob && !(photoFile instanceof File)) {
+        // If it's a compressed Blob, we need a filename
+        const filename = originalFilename || `photo_${Date.now()}.jpg`;
+        // Create a File object from the Blob
+        fileToUpload = new File([photoFile], filename, { type: photoFile.type || 'image/jpeg' });
+      }
+
+      // Add photo file to FormData
+      formData.append('photo', fileToUpload);
+
+      return apiClient.put(`/students/${id}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    } else {
+      // Standard JSON request for student update without photo
+      return apiClient.put(`/students/${id}`, data);
+    }
+  },
   deleteStudent(id) { return apiClient.delete(`/students/${id}`); },
   validateProgramCode(code) { return apiClient.get(`/students/validate-program/${code}`); },
 
   // Student Photo Upload
-  uploadStudentPhoto(studentId, file) {
+  uploadStudentPhoto(studentId, file, originalFilename = null) {
     const formData = new FormData();
-    formData.append('photo', file);
+
+    // Handle compressed images (Blob) - convert to File with proper filename
+    let fileToUpload = file;
+    if (file instanceof Blob && !(file instanceof File)) {
+      // If it's a compressed Blob, we need a filename
+      const filename = originalFilename || `photo_${Date.now()}.jpg`;
+      // Create a File object from the Blob
+      fileToUpload = new File([file], filename, { type: file.type || 'image/jpeg' });
+    }
+
+    formData.append('photo', fileToUpload);
     return apiClient.post(`/students/${studentId}/photo`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
