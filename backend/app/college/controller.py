@@ -60,7 +60,7 @@ def get_colleges():
         
         colleges = College.get_all_colleges()
         
-      
+        # Apply search filter (null-safe)
         if search:
             search_term = search.lower()
             if filter_field == "all":

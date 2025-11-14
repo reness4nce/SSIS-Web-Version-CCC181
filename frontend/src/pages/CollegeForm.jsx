@@ -8,6 +8,7 @@ function CollegeForm({ onSuccess, college, onClose }) {
 
   const [formData, setFormData] = useState({ code: "", name: "" });
   const [errorMessage, setErrorMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
     if (isEdit && college) {
@@ -19,6 +20,7 @@ function CollegeForm({ onSuccess, college, onClose }) {
 
   const handleChange = (e) => {
     setErrorMessage("");
+    setFieldErrors(prev => ({ ...prev, [e.target.name]: null }));
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
@@ -49,23 +51,45 @@ function CollegeForm({ onSuccess, college, onClose }) {
       }
     } catch (err) {
       console.error("Failed to save college:", err);
+      const errors = {};
 
-      // Handle validation errors (plural array format from backend)
+      
       if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
         const validationErrors = err.response.data.errors;
-        // Show the first validation error or join multiple errors
-        const errorMessage = validationErrors.length === 1
-          ? validationErrors[0]
-          : validationErrors.join(", ");
-        showErrorToast(errorMessage);
+
+        validationErrors.forEach(error => {
+          const errorLower = error.toLowerCase();
+
+          
+          if (errorLower.includes("college code already exists")) {
+            errors.code = error;
+          } else {
+           
+            setErrorMessage(error);
+            showErrorToast(error);
+          }
+        });
+
+        
+        setFieldErrors(errors);
       }
-      // Handle single error format (fallback)
+      
       else if (err.response?.data?.error) {
-        showErrorToast(err.response.data.error);
+        const errorLower = err.response.data.error.toLowerCase();
+
+        
+        if (errorLower.includes("college code already exists")) {
+          setFieldErrors({ code: err.response.data.error });
+        } else {
+          setErrorMessage(err.response.data.error);
+          showErrorToast(err.response.data.error);
+        }
       }
       // Handle generic errors
       else {
-        showErrorToast("Failed to save college. Please try again.");
+        const genericError = "Failed to save college. Please try again.";
+        setErrorMessage(genericError);
+        showErrorToast(genericError);
       }
     }
   };
@@ -90,11 +114,11 @@ function CollegeForm({ onSuccess, college, onClose }) {
           value={formData.code}
           onChange={handleChange}
           required
-          aria-describedby={errorMessage ? "code-error" : undefined}
+          aria-describedby={fieldErrors.code ? "code-error" : undefined}
         />
-        {errorMessage && (
+        {fieldErrors.code && (
           <span id="code-error" className="modal-field-error" role="alert">
-            {errorMessage}
+            {fieldErrors.code}
           </span>
         )}
       </div>
@@ -111,11 +135,11 @@ function CollegeForm({ onSuccess, college, onClose }) {
           value={formData.name}
           onChange={handleChange}
           required
-          aria-describedby={errorMessage ? "name-error" : undefined}
+          aria-describedby={fieldErrors.name ? "name-error" : undefined}
         />
-        {errorMessage && (
+        {fieldErrors.name && (
           <span id="name-error" className="modal-field-error" role="alert">
-            {errorMessage}
+            {fieldErrors.name}
           </span>
         )}
       </div>
