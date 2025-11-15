@@ -74,7 +74,7 @@ const ProgramList = () => {
 
   const handleDelete = async (code) => {
     const result = await showConfirmDialog({
-      title: 'Delete Program',
+      title: 'Delete Program?',
       text: 'This program will be permanently deleted. Students enrolled in this program will show "N/A" for their course. Are you sure?',
       confirmButtonText: 'Delete Program'
     });
@@ -107,6 +107,9 @@ const ProgramList = () => {
       // Fallback: refresh data
       fetchPrograms();
     }
+
+    // Reset the original code tracker
+    setOriginalEditingCode(null);
 
     // Close modal after a brief delay to allow state to update
     setTimeout(() => {
@@ -316,7 +319,12 @@ const ProgramList = () => {
         entityType="programs"
       />
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingProgram ? 'Edit Program' : 'Add Program'}>
-        <ProgramForm onSuccess={handleFormSuccess} program={editingProgram} onClose={closeModal} />
+        <ProgramForm
+          onSuccess={handleFormSuccess}
+          program={editingProgram}
+          originalCode={originalEditingCode}
+          onClose={closeModal}
+        />
       </Modal>
     </div>
   );

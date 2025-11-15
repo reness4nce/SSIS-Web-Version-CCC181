@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from "react";
 import api from "../services/api";
-import { showSuccessToast, showErrorToast } from "../utils/alert";
+import { showSuccessToast } from "../utils/alert";
 
-function ProgramForm({ onSuccess, program, onClose }) {
+function ProgramForm({ onSuccess, program, onClose, originalCode }) {
   const operation = program ? 'update' : 'create';
   const isEdit = !!program;
 
   const [formData, setFormData] = useState({ code: "", name: "", college: "" });
   const [colleges, setColleges] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
     const fetchColleges = async () => {
@@ -38,15 +39,40 @@ function ProgramForm({ onSuccess, program, onClose }) {
 
   const handleChange = (e) => {
     setErrorMessage("");
+    setFieldErrors(prev => ({ ...prev, [e.target.name]: null }));
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  // Enhanced validation function
+  const validateForm = () => {
+    const errors = {};
+
+    if (!formData.code?.trim()) {
+      errors.code = "Program code is required";
+    }
+
+    if (!formData.name?.trim()) {
+      errors.name = "Program name is required";
+    } else if (formData.name.trim().length < 3) {
+      errors.name = "Program name must be at least 3 characters";
+    }
+
+    if (!formData.college?.trim()) {
+      errors.college = "College selection is required";
+    }
+
+    return errors;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage("");
+    setFieldErrors({});
 
-    if (!formData.code || !formData.name || !formData.college) {
-      showErrorToast("All fields are required.");
+    // Client-side validation
+    const validationErrors = validateForm();
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
       return;
     }
 
@@ -54,7 +80,8 @@ function ProgramForm({ onSuccess, program, onClose }) {
       let response;
       if (isEdit) {
         // Use original program code in URL, updated data in body
-        response = await api.updateProgram(program.code, formData);
+        const codeToUse = originalCode || program.code;
+        response = await api.updateProgram(codeToUse, formData);
         showSuccessToast("Program updated successfully!");
       } else {
         response = await api.createProgram(formData);
@@ -69,22 +96,58 @@ function ProgramForm({ onSuccess, program, onClose }) {
     } catch (err) {
       console.error("Failed to save program:", err);
 
-      // Handle validation errors (plural array format from backend)
+      // Handle field-specific validation errors from backend
       if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
-        const validationErrors = err.response.data.errors;
-        // Show the first validation error or join multiple errors
-        const errorMessage = validationErrors.length === 1
-          ? validationErrors[0]
-          : validationErrors.join(", ");
-        showErrorToast(errorMessage);
+        const errors = {};
+        const generalErrors = [];
+
+        err.response.data.errors.forEach(error => {
+          const errorLower = error.toLowerCase();
+
+          // Map specific error types to form fields
+          if (errorLower.includes("duplicate") && errorLower.includes("program code")) {
+            errors.code = "A program with this code already exists. Please use a different code.";
+          } else if (errorLower.includes("unique") && errorLower.includes("program code")) {
+            errors.code = "This program code is already taken. Please choose a different code.";
+          } else if (errorLower.includes("program code")) {
+            errors.code = error;
+          } else if (errorLower.includes("program name")) {
+            errors.name = error;
+          } else if (errorLower.includes("college")) {
+            errors.college = error;
+          } else {
+            // General error that doesn't map to a specific field
+            generalErrors.push(error);
+          }
+        });
+
+        if (Object.keys(errors).length > 0) {
+          setFieldErrors(errors);
+        }
+
+        if (generalErrors.length > 0) {
+          const generalErrorMsg = generalErrors.length === 1
+            ? generalErrors[0]
+            : generalErrors.join(", ");
+          setErrorMessage(generalErrorMsg);
+        }
       }
-      // Handle single error format (fallback)
+      // Handle single error format
       else if (err.response?.data?.error) {
-        showErrorToast(err.response.data.error);
+        const errorLower = err.response.data.error.toLowerCase();
+
+        if (errorLower.includes("duplicate") && errorLower.includes("program code")) {
+          setFieldErrors({ code: "A program with this code already exists. Please use a different code." });
+        } else if (errorLower.includes("unique") && errorLower.includes("program code")) {
+          setFieldErrors({ code: "This program code is already taken. Please choose a different code." });
+        } else {
+          setErrorMessage(err.response.data.error);
+        }
       }
       // Handle generic errors
       else {
-        showErrorToast("Failed to save program. Please try again.");
+        const genericError = "Failed to save program. Please check your input and try again.";
+        setErrorMessage(genericError);
       }
     }
   };
@@ -126,11 +189,11 @@ function ProgramForm({ onSuccess, program, onClose }) {
           value={formData.code}
           onChange={handleChange}
           required
-          aria-describedby={errorMessage ? "code-error" : undefined}
+          aria-describedby={fieldErrors.code ? "code-error" : undefined}
         />
-        {errorMessage && (
+        {fieldErrors.code && (
           <span id="code-error" className="modal-field-error" role="alert">
-            {errorMessage}
+            {fieldErrors.code}
           </span>
         )}
       </div>
@@ -147,11 +210,11 @@ function ProgramForm({ onSuccess, program, onClose }) {
           value={formData.name}
           onChange={handleChange}
           required
-          aria-describedby={errorMessage ? "name-error" : undefined}
+          aria-describedby={fieldErrors.name ? "name-error" : undefined}
         />
-        {errorMessage && (
+        {fieldErrors.name && (
           <span id="name-error" className="modal-field-error" role="alert">
-            {errorMessage}
+            {fieldErrors.name}
           </span>
         )}
       </div>
@@ -160,25 +223,27 @@ function ProgramForm({ onSuccess, program, onClose }) {
         <label htmlFor="program-college" className="form-label">
           College
         </label>
-        <select
-          id="program-college"
-          name="college"
-          className="form-control"
-          value={formData.college}
-          onChange={handleChange}
-          required
-          aria-describedby={errorMessage ? "college-error" : undefined}
-        >
-          <option value="">Select a college</option>
-          {colleges.map((college) => (
-            <option key={college.code} value={college.code}>
-              {college.name}
-            </option>
-          ))}
-        </select>
-        {errorMessage && (
+        <div className="select-wrapper">
+          <select
+            id="program-college"
+            name="college"
+            className="form-control"
+            value={formData.college}
+            onChange={handleChange}
+            required
+            aria-describedby={fieldErrors.college ? "college-error" : undefined}
+          >
+            <option value="">Select a college</option>
+            {colleges.map((college) => (
+              <option key={college.code} value={college.code}>
+                {college.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {fieldErrors.college && (
           <span id="college-error" className="modal-field-error" role="alert">
-            {errorMessage}
+            {fieldErrors.college}
           </span>
         )}
       </div>

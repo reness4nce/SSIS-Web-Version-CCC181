@@ -86,7 +86,7 @@ const CollegeList = () => {
         const warningMessage = `This college has ${programCount} program${programCount > 1 ? 's' : ''} with ${enrolledStudents} enrolled student${enrolledStudents !== 1 ? 's' : ''}. Deleting this college will affect all associated programs and students. Are you sure you want to proceed?`;
 
         const result = await showConfirmDialog({
-          title: 'Cannot Delete College',
+          title: 'Delete College?',
           text: warningMessage,
           confirmButtonText: 'I Understand, Delete Anyway',
           confirmButtonColor: '#d33',
@@ -99,7 +99,7 @@ const CollegeList = () => {
       } else {
         // No programs, show standard confirmation
         const result = await showConfirmDialog({
-          title: 'Delete College',
+          title: 'Delete College?',
           text: 'This college will be permanently deleted. Are you sure?',
           confirmButtonText: 'Delete College'
         });

@@ -42,6 +42,7 @@ const StudentList = () => {
   const [editingStudent, setEditingStudent] = useState(null);
   const [originalEditingId, setOriginalEditingId] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [justUploadedPhoto, setJustUploadedPhoto] = useState(false);
 
   // Debounced search for performance
   const [debouncedSearch] = useDebounce(searchParams.search, DEBOUNCE_DELAY);
@@ -157,6 +158,21 @@ const StudentList = () => {
       if (editingStudent?.id === studentData.id) {
         setEditingStudent({ ...editingStudent, ...studentData });
       }
+    } else if (operation === 'photo_update_no_close' && studentData) {
+      // Update student data but keep modal open
+      setStudents((prev) =>
+        prev.map((student) =>
+          student.id === studentData.id ? { ...student, ...studentData } : student
+        )
+      );
+
+      if (editingStudent?.id === studentData.id) {
+        setEditingStudent({ ...editingStudent, ...studentData });
+      }
+
+      // Mark that we just uploaded a photo - toast will show when modal closes
+      setJustUploadedPhoto(true);
+      return; // Don't close modal
     } else {
       fetchStudents();
     }
@@ -186,6 +202,10 @@ const StudentList = () => {
   };
 
   const closeModal = () => {
+    if (justUploadedPhoto) {
+      showSuccessToast("Photo uploaded successfully!");
+      setJustUploadedPhoto(false);
+    }
     setIsModalOpen(false);
     setEditingStudent(null);
     setOriginalEditingId(null);
@@ -314,12 +334,16 @@ const StudentList = () => {
               students.map((student) => (
                 <tr key={student.id} className="student-row">
                   <td className="avatar-container">
-                    <StudentAvatar student={student} size={90} />
+                    <StudentAvatar
+                      key={`${student.id}-${student.profile_photo_url || 'no-photo'}`}
+                      student={student}
+                      size={90}
+                    />
                   </td>
                   <td>{student.id || 'N/A'}</td>
                   <td>{student.firstname || 'N/A'}</td>
                   <td>{student.lastname || 'N/A'}</td>
-                  <td>{student.course_name || student.course || 'N/A'}</td>
+                  <td>{student.course || 'N/A'}</td>
                   <td>{student.year || 'N/A'}</td>
                   <td>{student.gender || 'N/A'}</td>
                   <td>

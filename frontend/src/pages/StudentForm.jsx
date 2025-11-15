@@ -4,6 +4,7 @@ import { showSuccessToast, showErrorToast } from "../utils/alert";
 import { FiUpload, FiX, FiCamera, FiAlertCircle, FiCheckCircle, FiFile, FiTrash2 } from "react-icons/fi";
 import StudentAvatar from "../components/StudentAvatar";
 import CurrentPhotoDisplay from "../components/CurrentPhotoDisplay";
+import ConfirmModal from "../components/ConfirmModal";
 
 function StudentForm({ onSuccess, student, onClose }) {
   const operation = student ? 'update' : 'create';
@@ -27,6 +28,7 @@ function StudentForm({ onSuccess, student, onClose }) {
 
   // Enhanced photo upload states with proper persistence
   const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [originalPhotoFilename, setOriginalPhotoFilename] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [currentPhotoUrl, setCurrentPhotoUrl] = useState(student?.profile_photo_url || null);
   const [currentPhotoFilename, setCurrentPhotoFilename] = useState(student?.profile_photo_filename || null);
@@ -44,6 +46,9 @@ function StudentForm({ onSuccess, student, onClose }) {
 
   // File input ref for explicit file selection
   const fileInputRef = useRef(null);
+
+  // Confirmation modal state
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
   // ✅ Sync current photo state with student prop changes (for page refresh persistence)
   useEffect(() => {
@@ -77,6 +82,16 @@ function StudentForm({ onSuccess, student, onClose }) {
       fetchPrograms();
     }
   }, [onSuccess]);
+
+  // ✅ Auto-refresh programs every 5 seconds to catch external changes
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      console.log("🔄 Auto-refreshing programs list in StudentForm");
+      fetchPrograms();
+    }, 5000); // Refresh every 5 seconds
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   // ✅ Real-time program validation
   useEffect(() => {
@@ -331,8 +346,11 @@ function StudentForm({ onSuccess, student, onClose }) {
     setPhotoError("");
     setIsCompressing(true);
     setShowFileInput(false);
-    
+
     try {
+      // Store original filename for later use
+      setOriginalPhotoFilename(file.name);
+
       // Compress image if it's larger than 500KB
       let processedFile = file;
       if (file.size > 500 * 1024) {
@@ -340,7 +358,7 @@ function StudentForm({ onSuccess, student, onClose }) {
         processedFile = await compressImage(file);
         console.log(`Original size: ${file.size}, Compressed size: ${processedFile.size}`);
       }
-      
+
       setSelectedPhoto(processedFile);
 
       // Create preview
@@ -376,11 +394,9 @@ function StudentForm({ onSuccess, student, onClose }) {
           setUploadProgress(prev => Math.min(prev + 10, 90));
         }, 200);
 
-        const response = await api.uploadStudentPhoto(formData.id, selectedPhoto);
+        const response = await api.uploadStudentPhoto(formData.id, selectedPhoto, originalPhotoFilename);
         clearInterval(progressInterval);
         setUploadProgress(100);
-        
-        showSuccessToast("Photo uploaded successfully!");
         
         // Update current photo state immediately for page refresh persistence
         const newPhotoUrl = response.data.photo_url;
@@ -403,7 +419,7 @@ function StudentForm({ onSuccess, student, onClose }) {
         
         // Update the student data for immediate UI update
         if (onSuccess) {
-          onSuccess(updatedStudentData, 'photo_update');
+          onSuccess(updatedStudentData, 'photo_update_no_close');
         }
         
         console.log('✅ Photo uploaded and state updated for persistence');
@@ -436,38 +452,44 @@ function StudentForm({ onSuccess, student, onClose }) {
   };
 
   // Enhanced photo removal with confirmation
-  const handleRemovePhoto = async () => {
+  const handleRemovePhoto = () => {
     if (!isEdit || !currentPhotoFilename) return;
+    setIsConfirmModalOpen(true);
+  };
 
-    const confirmed = window.confirm("Are you sure you want to remove this photo? This action cannot be undone.");
-    if (!confirmed) return;
-
+  // Handle confirmed photo removal
+  const handleConfirmPhotoRemoval = async () => {
     try {
       await api.deleteStudentPhoto(student.id);
-      showSuccessToast("Photo removed successfully!");
-      
+
       // Clear current photo state immediately for page refresh persistence
       setCurrentPhotoUrl(null);
       setCurrentPhotoFilename(null);
       setImageError(false);
-      
+
       // Update student data to reflect removed photo
       const updatedStudentData = {
         ...student,
         profile_photo_url: null,
         profile_photo_filename: null
       };
-      
+
       if (onSuccess) {
-        onSuccess(updatedStudentData, 'photo_update');
+        onSuccess(updatedStudentData, 'photo_update_no_close');
       }
-      
+
       console.log('✅ Photo removed and state updated for persistence');
-      
     } catch (err) {
       console.error('Photo removal error:', err);
       showErrorToast('Failed to remove photo');
+    } finally {
+      setIsConfirmModalOpen(false);
     }
+  };
+
+  // Handle modal cancel
+  const handleCancelPhotoRemoval = () => {
+    setIsConfirmModalOpen(false);
   };
 
   // Enhanced photo change handler
@@ -585,17 +607,35 @@ function StudentForm({ onSuccess, student, onClose }) {
       let response;
       if (isEdit) {
         // Use original student ID in URL, updated data in body
-        response = await api.updateStudent(student.id, formData);
-        showSuccessToast("Student updated successfully!");
+        // Include photo if selected during editing
+        response = await api.updateStudent(student.id, formData, selectedPhoto, originalPhotoFilename);
+        const photoIncludedMessage = selectedPhoto ? " with photo" : "";
+        showSuccessToast(`Student updated successfully${photoIncludedMessage}!`);
       } else {
-        response = await api.createStudent(formData);
-        showSuccessToast("Student created successfully!");
+        // NEW: For creating students, include photo if available
+        response = await api.createStudent(formData, selectedPhoto, originalPhotoFilename);
+        const photoIncludedMessage = selectedPhoto ? " with photo" : "";
+        showSuccessToast(`Student created successfully${photoIncludedMessage}!`);
       }
 
       // Pass the updated/created student data and operation type to the callback for in-place updates
       if (onSuccess) {
         const studentData = response.data.student;
         onSuccess(studentData, operation);
+
+        // Clear photo state after successful creation (only for new students)
+        if (!isEdit) {
+          setSelectedPhoto(null);
+          setPhotoPreview(null);
+          setOriginalPhotoFilename(null);
+          setPhotoError("");
+          setUploadProgress(0);
+          setShowFileInput(false);
+          // Clear file input
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to save student:", err);
@@ -777,22 +817,24 @@ function StudentForm({ onSuccess, student, onClose }) {
         <label htmlFor="student-program" className="form-label">
           Program
         </label>
-        <select
-          id="student-program"
-          name="course"
-          className="form-control"
-          value={formData.course}
-          onChange={handleChange}
-          required
-          aria-describedby={fieldErrors.course ? "course-error" : undefined}
-        >
-          <option value="">Select a program</option>
-          {programs.map((program) => (
-            <option key={program.code} value={program.code}>
-              {program.name}
-            </option>
-          ))}
-        </select>
+        <div className="select-wrapper">
+          <select
+            id="student-program"
+            name="course"
+            className="form-control"
+            value={formData.course}
+            onChange={handleChange}
+            required
+            aria-describedby={fieldErrors.course ? "course-error" : undefined}
+          >
+            <option value="">Select a program</option>
+            {programs.map((program) => (
+              <option key={program.code} value={program.code}>
+                {program.name}
+              </option>
+            ))}
+          </select>
+        </div>
         {fieldErrors.course && (
           <span id="course-error" className="modal-field-error" role="alert">
             {fieldErrors.course}
@@ -828,20 +870,22 @@ function StudentForm({ onSuccess, student, onClose }) {
         <label htmlFor="student-gender" className="form-label">
           Gender
         </label>
-        <select
-          id="student-gender"
-          name="gender"
-          className="form-control"
-          value={formData.gender}
-          onChange={handleChange}
-          required
-          aria-describedby={fieldErrors.gender ? "gender-error" : undefined}
-        >
-          <option value="">Select Gender</option>
-          <option value="Male">Male</option>
-          <option value="Female">Female</option>
-          <option value="Other">Other</option>
-        </select>
+        <div className="select-wrapper">
+          <select
+            id="student-gender"
+            name="gender"
+            className="form-control"
+            value={formData.gender}
+            onChange={handleChange}
+            required
+            aria-describedby={fieldErrors.gender ? "gender-error" : undefined}
+          >
+            <option value="">Select Gender</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
         {fieldErrors.gender && (
           <span id="gender-error" className="modal-field-error" role="alert">
             {fieldErrors.gender}
@@ -1039,29 +1083,42 @@ function StudentForm({ onSuccess, student, onClose }) {
                   </div>
                   
                   <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                    <button
-                      type="button"
-                      onClick={handlePhotoUpload}
-                      disabled={isUploadingPhoto || !formData.id}
-                      className="btn btn-primary"
-                      style={{ 
+                    {/* Show message for editing students that photo will be uploaded with form */}
+                    {isEdit && selectedPhoto && (
+                      <div style={{
                         padding: '12px 24px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                      }}
-                      aria-label="Upload photo to server"
-                    >
-                      <FiUpload size={16} />
-                      {isUploadingPhoto ? 'Uploading...' : 'Upload to Server'}
-                    </button>
-                    
+                        backgroundColor: '#e6fffa',
+                        border: '1px solid #b2f5ea',
+                        borderRadius: '6px',
+                        color: '#234e52',
+                        fontSize: '14px',
+                        fontWeight: '500'
+                      }}>
+                        Photo will be uploaded when you update the student
+                      </div>
+                    )}
+
+                    {/* Show message for new students that photo will be uploaded with form */}
+                    {!isEdit && selectedPhoto && (
+                      <div style={{
+                        padding: '12px 24px',
+                        backgroundColor: '#e6fffa',
+                        border: '1px solid #b2f5ea',
+                        borderRadius: '6px',
+                        color: '#234e52',
+                        fontSize: '14px',
+                        fontWeight: '500'
+                      }}>
+                        Photo will be uploaded when you create the student
+                      </div>
+                    )}
+
                     <button
                       type="button"
                       onClick={handleFileSelect}
                       disabled={isUploadingPhoto}
                       className="btn btn-secondary"
-                      style={{ 
+                      style={{
                         padding: '12px 24px',
                         display: 'flex',
                         alignItems: 'center',
@@ -1072,13 +1129,13 @@ function StudentForm({ onSuccess, student, onClose }) {
                       <FiFile size={16} />
                       Choose Different File
                     </button>
-                    
+
                     <button
                       type="button"
                       onClick={clearPhotoSelection}
                       disabled={isUploadingPhoto}
                       className="btn btn-outline-secondary"
-                      style={{ 
+                      style={{
                         padding: '12px 24px',
                         display: 'flex',
                         alignItems: 'center',
@@ -1220,6 +1277,19 @@ function StudentForm({ onSuccess, student, onClose }) {
           {isEdit ? "Update Student" : "Add Student"}
         </button>
       </div>
+
+      {/* Photo Removal Confirmation Modal */}
+      <ConfirmModal
+        isOpen={isConfirmModalOpen}
+        onClose={handleCancelPhotoRemoval}
+        onConfirm={handleConfirmPhotoRemoval}
+        title="Remove Profile Photo"
+        message="Are you sure you want to remove this photo? This action cannot be undone."
+        confirmText="Yes, Remove Photo"
+        cancelText="Cancel"
+        confirmButtonClass="danger"
+        size="small"
+      />
     </form>
   );
 }
