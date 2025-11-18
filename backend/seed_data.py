@@ -262,10 +262,9 @@ def seed_database():
     try:
         # Check if data already exists using raw SQL
         college_count = count_records("college")
-        # Temporarily force reseed for testing
-        # if college_count > 0:
-        #     print("Database already has data. Skipping seeding.")
-        #     return
+        if college_count > 0:
+            print("Database already has data. Skipping seeding.")
+            return
 
         create_colleges()
         create_programs()
