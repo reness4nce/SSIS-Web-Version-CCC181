@@ -1,8 +1,4 @@
-"""
-Cache utilities for dashboard performance optimization.
 
-Provides TTL-based caching for dashboard statistics to prevent N+1 query issues.
-"""
 
 from . import cache
 

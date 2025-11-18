@@ -395,15 +395,21 @@ def update_student_json(student_id):
             except (ValueError, TypeError):
                 year_value = None
 
-        logger.debug(f"Updating student: {student_id.upper()}")
+        # Check if ID is being updated
+        new_id = data.get("id", "").strip().upper() if data.get("id") else None
+        original_id = student_id.upper()
+        id_changed = new_id and new_id != original_id
+
+        logger.debug(f"Updating student: {original_id}" + (f" (changing ID to: {new_id})" if id_changed else ""))
 
         success = Student.update_student(
-            student_id=student_id.upper(),
+            student_id=original_id,
             firstname=data.get("firstname", "").strip() if data.get("firstname") else None,
             lastname=data.get("lastname", "").strip() if data.get("lastname") else None,
             course=data.get("course", "").upper().strip() if data.get("course") else None,
             year=year_value,
             gender=data.get("gender", "").capitalize() if data.get("gender") else None,
+            new_id=new_id if id_changed else None,
             profile_photo_url=data.get("profile_photo_url"),
             profile_photo_filename=data.get("profile_photo_filename")
         )
@@ -411,8 +417,10 @@ def update_student_json(student_id):
         if not success:
             return jsonify({"error": "Student not found or no changes made"}), 404
 
-        updated_student = Student.get_by_id(student_id.upper())
-        logger.info(f"Student updated: {student_id.upper()}")
+        # If ID changed, get student by new ID; otherwise use original ID
+        lookup_id = new_id if id_changed else original_id
+        updated_student = Student.get_by_id(lookup_id)
+        logger.info(f"Student updated: {original_id}" + (f" (now: {lookup_id})" if id_changed else ""))
 
         # Clear dashboard cache since stats may have changed
         clear_dashboard_cache()
@@ -434,8 +442,9 @@ def update_student_with_photo(student_id):
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        # Get form data
+        # Get form data (including ID for potential update)
         data = {
+            'id': request.form.get('id'),
             'firstname': request.form.get('firstname'),
             'lastname': request.form.get('lastname'),
             'course': request.form.get('course'),
@@ -443,8 +452,8 @@ def update_student_with_photo(student_id):
             'gender': request.form.get('gender')
         }
 
-        # Remove None values for validation
-        data = {k: v for k, v in data.items() if v is not None}
+        # Remove None values for validation (but keep ID if provided)
+        data = {k: v for k, v in data.items() if v is not None or k == 'id'}
 
         # Validate only provided fields (partial update)
         errors = []
@@ -501,14 +510,22 @@ def update_student_with_photo(student_id):
                 logger.error(f"Photo upload failed during student update: {result.get('error')}")
                 return jsonify({"error": f"Photo upload failed: {result.get('error', 'Unknown error')}"}), 400
 
+        # Check if ID is being updated
+        new_id = data.get("id", "").strip().upper() if data.get("id") else None
+        original_id = student_id.upper()
+        id_changed = new_id and new_id != original_id
+
+        logger.debug(f"Updating student with photo: {original_id}" + (f" (changing ID to: {new_id})" if id_changed else ""))
+
         # Update student data (only provided fields)
         success = Student.update_student(
-            student_id=student_id.upper(),
+            student_id=original_id,
             firstname=data.get("firstname", "").strip() if data.get("firstname") else None,
             lastname=data.get("lastname", "").strip() if data.get("lastname") else None,
             course=data.get("course", "").upper().strip() if data.get("course") else None,
             year=year_value,
             gender=data.get("gender", "").capitalize() if data.get("gender") else None,
+            new_id=new_id if id_changed else None,
             profile_photo_url=profile_photo_url,
             profile_photo_filename=profile_photo_filename
         )
@@ -516,8 +533,10 @@ def update_student_with_photo(student_id):
         if not success:
             return jsonify({"error": "Student not found or no changes made"}), 404
 
-        updated_student = Student.get_by_id(student_id.upper())
-        logger.info(f"Student with photo updated: {student_id.upper()}")
+        # If ID changed, get student by new ID; otherwise use original ID
+        lookup_id = new_id if id_changed else original_id
+        updated_student = Student.get_by_id(lookup_id)
+        logger.info(f"Student with photo updated: {original_id}" + (f" (now: {lookup_id})" if id_changed else ""))
 
         # Clear dashboard cache since stats may have changed
         clear_dashboard_cache()

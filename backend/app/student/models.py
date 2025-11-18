@@ -223,7 +223,7 @@ class Student:
             raise
 
     @staticmethod
-    def update_student(student_id, firstname=None, lastname=None, course=None, year=None, gender=None, profile_photo_url=None, profile_photo_filename=None):
+    def update_student(student_id, firstname=None, lastname=None, course=None, year=None, gender=None, new_id=None, profile_photo_url=None, profile_photo_filename=None):
         """Update student information"""
         try:
             update_data = {}
@@ -237,6 +237,8 @@ class Student:
                 update_data['year'] = year
             if gender:
                 update_data['gender'] = gender
+            if new_id:
+                update_data['id'] = new_id.upper()
             if profile_photo_url is not None:
                 update_data['profile_photo_url'] = profile_photo_url
             if profile_photo_filename is not None:
@@ -255,8 +257,8 @@ class Student:
                 "id = %s",
                 params=[student_id]
             )
-            
-            logger.info(f"Student updated: {student_id}")
+
+            logger.info(f"Student updated: {student_id}" + (f" (new ID: {new_id.upper()})" if new_id else ""))
             return result
         except Exception as e:
             logger.error(f"Error updating student: {e}", exc_info=True)

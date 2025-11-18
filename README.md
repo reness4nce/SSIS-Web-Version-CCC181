@@ -13,7 +13,7 @@ A modern web application for Student Information System (SSIS) management, built
 
 ### 🎓 Student Management
 - **CRUD Operations**: Create, read, update, and delete student records
-- **Photo Upload**: Profile photo management with file validation (max 5MB, supports JPEG, PNG, WebP)
+- **Photo Upload**: Profile photo management with file validation (max 5MB, supports JPEG, JPG, PNG, WebP)
 - **Advanced Search & Filter**: Search by name, ID, course, year with real-time filtering
 - **Pagination**: Efficient data handling with customizable page sizes
 - **Sorting**: Sort by ID, name, course, year, or gender
