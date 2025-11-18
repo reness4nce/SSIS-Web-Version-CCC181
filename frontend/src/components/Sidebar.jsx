@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
     MdDashboard, 
@@ -10,7 +10,9 @@ import {
     MdExpandMore,
     MdExpandLess,
     MdPerson,
-    MdNotifications
+    MdNotifications,
+    MdKeyboardArrowDown,
+    MdKeyboardArrowUp
 } from 'react-icons/md';
 import { useAuth } from '../contexts/AuthContext';
 import { useSidebar } from '../contexts/SidebarContext';
@@ -26,13 +28,34 @@ const Sidebar = () => {
         startAutoCollapseTimer,
         cancelAutoCollapseTimer,
         toggleCollapsed,
-        setAutoCollapse
+        setAutoCollapse,
+        toggleSidebar
     } = useSidebar();
     
     const navigate = useNavigate();
     const location = useLocation();
     const [showProfilePopover, setShowProfilePopover] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
+    const [showSettingsPopover, setShowSettingsPopover] = useState(false);
+    const [sidebarSettings, setSidebarSettings] = useState(() => {
+        try {
+            const saved = localStorage.getItem('sidebar-settings');
+            return saved ? JSON.parse(saved) : {
+                autoCollapse: true,
+                theme: 'default'
+            };
+        } catch (error) {
+            console.warn('Failed to load sidebar settings:', error);
+            return {
+                autoCollapse: true,
+                theme: 'default'
+            };
+        }
+    });
+
+    // Refs for focus management
+    const profileButtonRef = useRef(null);
+    const settingsButtonRef = useRef(null);
+    const settingsPopoverRef = useRef(null);
 
     // Optimized logout handler
     const handleLogout = useCallback(async () => {
@@ -44,25 +67,59 @@ const Sidebar = () => {
         }
     }, [logout, navigate]);
 
-    // Optimized profile interactions
+    // Profile actions - implemented properly
     const handleProfileClick = useCallback(() => {
-        setShowProfilePopover(prev => !prev);
-        setShowSettings(false);
-    }, []);
+        navigate('/profile'); // Navigate to profile page
+        setShowProfilePopover(false);
+        setShowSettingsPopover(false);
+        handleNavigation(); // Handle sidebar collapse on mobile
+    }, [navigate, handleNavigation]);
 
+    const handleNotificationsClick = useCallback(() => {
+        // Could navigate to notifications page or show modal
+        console.log('Navigate to notifications');
+        setShowProfilePopover(false);
+        setShowSettingsPopover(false);
+        handleNavigation();
+    }, [handleNavigation]);
+
+    // Settings functionality - implemented properly
     const handleSettingsClick = useCallback(() => {
-        setShowSettings(prev => !prev);
+        setShowSettingsPopover(prev => !prev);
         setShowProfilePopover(false);
     }, []);
+
+    const handleSettingsClose = useCallback(() => {
+        setShowSettingsPopover(false);
+        if (settingsButtonRef.current) {
+            settingsButtonRef.current.focus();
+        }
+    }, []);
+
+    const handleSettingChange = useCallback((key, value) => {
+        const newSettings = { ...sidebarSettings, [key]: value };
+        setSidebarSettings(newSettings);
+        
+        try {
+            localStorage.setItem('sidebar-settings', JSON.stringify(newSettings));
+        } catch (error) {
+            console.warn('Failed to save sidebar settings:', error);
+        }
+
+        // Apply settings immediately
+        if (key === 'autoCollapse') {
+            setAutoCollapse(value);
+        }
+    }, [sidebarSettings, setAutoCollapse]);
 
     // Enhanced collapse toggle with better UX
     const handleCollapseToggle = useCallback(() => {
         toggleCollapsed();
         cancelAutoCollapseTimer();
         
-        // Close profile popover if open
+        // Close popovers if open
         setShowProfilePopover(false);
-        setShowSettings(false);
+        setShowSettingsPopover(false);
     }, [toggleCollapsed, cancelAutoCollapseTimer]);
 
     // Optimized mouse interactions
@@ -113,6 +170,9 @@ const Sidebar = () => {
     const handleNavClick = useCallback((path) => {
         navigate(path);
         handleNavigation();
+        // Close popovers on navigation
+        setShowProfilePopover(false);
+        setShowSettingsPopover(false);
     }, [navigate, handleNavigation]);
 
     // Enhanced keyboard navigation
@@ -120,29 +180,91 @@ const Sidebar = () => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             action();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setShowProfilePopover(false);
+            setShowSettingsPopover(false);
+            if (profileButtonRef.current) {
+                profileButtonRef.current.focus();
+            }
         }
     }, []);
+
+    const handleSettingsKeyDown = useCallback((e, action) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            action();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setShowSettingsPopover(false);
+            if (settingsButtonRef.current) {
+                settingsButtonRef.current.focus();
+            }
+        } else if (e.key === 'ArrowDown' && showSettingsPopover) {
+            e.preventDefault();
+            if (settingsPopoverRef.current) {
+                const firstItem = settingsPopoverRef.current.querySelector('.settings-popover-item');
+                if (firstItem) firstItem.focus();
+            }
+        }
+    }, [showSettingsPopover]);
 
     // Close popovers when clicking outside
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (!event.target.closest('.user-section')) {
                 setShowProfilePopover(false);
-                setShowSettings(false);
+                setShowSettingsPopover(false);
             }
         };
 
-        if (showProfilePopover || showSettings) {
+        if (showProfilePopover || showSettingsPopover) {
             document.addEventListener('click', handleClickOutside);
             return () => document.removeEventListener('click', handleClickOutside);
         }
-    }, [showProfilePopover, showSettings]);
+    }, [showProfilePopover, showSettingsPopover]);
+
+    // Keyboard navigation for settings popover
+    useEffect(() => {
+        if (!showSettingsPopover) return;
+
+        const handleSettingsPopoverKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setShowSettingsPopover(false);
+                if (settingsButtonRef.current) {
+                    settingsButtonRef.current.focus();
+                }
+            } else if (e.key === 'Tab') {
+                const items = Array.from(settingsPopoverRef.current?.querySelectorAll('.settings-popover-item') || []);
+                if (items.length === 0) return;
+
+                if (e.shiftKey) {
+                    // Shift+Tab on first item
+                    if (document.activeElement === items[0]) {
+                        e.preventDefault();
+                        settingsButtonRef.current?.focus();
+                    }
+                } else {
+                    // Tab on last item returns to first
+                    if (document.activeElement === items[items.length - 1]) {
+                        e.preventDefault();
+                        items[0].focus();
+                    }
+                }
+            }
+        };
+
+        document.addEventListener('keydown', handleSettingsPopoverKeyDown);
+        return () => document.removeEventListener('keydown', handleSettingsPopoverKeyDown);
+    }, [showSettingsPopover]);
 
     return (
         <div
             className={sidebarClasses}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            role="navigation"
+            aria-label="Main navigation"
         >
             <div className="sidebar-header">
                 <div className="logo-icon">
@@ -150,7 +272,7 @@ const Sidebar = () => {
                 </div>
                 <h2>InsTrack</h2>
                 
-                {/* Optimized Collapse Toggle */}
+                {/* Enhanced Collapse Toggle Control with better contrast */}
                 <button 
                     className="collapse-toggle"
                     onClick={handleCollapseToggle}
@@ -215,34 +337,53 @@ const Sidebar = () => {
             {/* User section - only render when logged in */}
             {currentUser && (
                 <div className="sidebar-footer">
-                    <div className="user-section" onClick={handleProfileClick}>
-                        <div className="user-avatar" title={currentUser.username}>
-                            {getAvatarInitials(currentUser.username)}
-                        </div>
-                        <div className="user-details">
-                            <p className="user-name">{currentUser.username}</p>
-                            <p className="user-role">Administrator</p>
-                        </div>
+                    <div className="user-section">
+                        <button
+                            ref={profileButtonRef}
+                            onClick={() => setShowProfilePopover(prev => !prev)}
+                            className="user-avatar-button"
+                            aria-label="Open user menu"
+                            aria-expanded={showProfilePopover}
+                            aria-haspopup="menu"
+                            onKeyDown={(e) => handleKeyDown(e, () => setShowProfilePopover(prev => !prev))}
+                        >
+                            <div className="user-avatar" title={currentUser.username}>
+                                {getAvatarInitials(currentUser.username)}
+                            </div>
+                            <div className="user-details">
+                                <p className="user-name">{currentUser.username}</p>
+                                <p className="user-role">Administrator</p>
+                            </div>
+                            <MdKeyboardArrowDown 
+                                size={16} 
+                                className={`profile-arrow ${showProfilePopover ? 'rotated' : ''}`}
+                            />
+                        </button>
+                        
                         <button 
+                            ref={settingsButtonRef}
                             className="settings-icon"
                             onClick={handleSettingsClick}
+                            onKeyDown={handleSettingsKeyDown}
                             aria-label="Open settings"
-                            onKeyDown={(e) => handleKeyDown(e, handleSettingsClick)}
+                            aria-expanded={showSettingsPopover}
+                            aria-haspopup="menu"
                         >
                             <MdSettings size={16} />
                         </button>
                         
-                        {/* Optimized Profile Popover */}
+                        {/* Enhanced Profile Popover with proper functionality */}
                         {showProfilePopover && (
-                            <div className="profile-popover active" role="menu" aria-label="User menu">
+                            <div 
+                                className="profile-popover active" 
+                                role="menu" 
+                                aria-label="User menu"
+                            >
                                 <button
                                     className="profile-popover-item"
                                     role="menuitem"
-                                    onClick={() => {
-                                        console.log('Profile clicked');
-                                        setShowProfilePopover(false);
-                                    }}
-                                    onKeyDown={(e) => handleKeyDown(e, () => setShowProfilePopover(false))}
+                                    onClick={handleProfileClick}
+                                    onKeyDown={(e) => handleKeyDown(e, handleProfileClick)}
                                 >
                                     <MdPerson size={16} />
                                     <span>Profile</span>
@@ -250,24 +391,55 @@ const Sidebar = () => {
                                 <button
                                     className="profile-popover-item"
                                     role="menuitem"
-                                    onClick={handleSettingsClick}
-                                    onKeyDown={(e) => handleKeyDown(e, handleSettingsClick)}
-                                >
-                                    <MdSettings size={16} />
-                                    <span>Settings</span>
-                                </button>
-                                <button
-                                    className="profile-popover-item"
-                                    role="menuitem"
-                                    onClick={() => {
-                                        console.log('Notifications clicked');
-                                        setShowProfilePopover(false);
-                                    }}
-                                    onKeyDown={(e) => handleKeyDown(e, () => setShowProfilePopover(false))}
+                                    onClick={handleNotificationsClick}
+                                    onKeyDown={(e) => handleKeyDown(e, handleNotificationsClick)}
                                 >
                                     <MdNotifications size={16} />
                                     <span>Notifications</span>
                                 </button>
+                            </div>
+                        )}
+
+                        {/* Real Settings Popover */}
+                        {showSettingsPopover && (
+                            <div 
+                                ref={settingsPopoverRef}
+                                className="settings-popover active"
+                                role="menu" 
+                                aria-label="Sidebar settings"
+                            >
+                                <div className="settings-header">
+                                    <h4>Sidebar Settings</h4>
+                                </div>
+                                
+                                <div className="settings-item">
+                                    <label className="settings-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={sidebarSettings.autoCollapse}
+                                            onChange={(e) => handleSettingChange('autoCollapse', e.target.checked)}
+                                            className="settings-checkbox"
+                                        />
+                                        Auto-collapse when inactive
+                                    </label>
+                                </div>
+
+                                <div className="settings-item">
+                                    <label className="settings-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={isCollapsed}
+                                            onChange={(e) => {
+                                                handleCollapseToggle();
+                                                if (settingsButtonRef.current) {
+                                                    settingsButtonRef.current.focus();
+                                                }
+                                            }}
+                                            className="settings-checkbox"
+                                        />
+                                        Collapse sidebar
+                                    </label>
+                                </div>
                             </div>
                         )}
                     </div>

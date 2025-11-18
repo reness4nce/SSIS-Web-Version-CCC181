@@ -240,15 +240,18 @@
   color: #9ca3af;
 }
 
-/* Dropdown arrow styling for select elements */
+/* Dropdown arrow styling for select elements using wrapper approach */
 .modal-form select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  padding-right: 36px;
 }
 
-.modal-form select::after {
+.modal-form .select-wrapper {
+  position: relative;
+}
+
+.modal-form .select-wrapper::after {
   content: '▼';
   position: absolute;
   right: 14px;
@@ -259,7 +262,7 @@
   pointer-events: none;
 }
 
-.modal-form select:focus::after {
+.modal-form .select-wrapper:focus-within::after {
   color: #3b82f6;
 }
 

@@ -13,11 +13,13 @@ const apiClient = axios.create({
 // Add request interceptor for debugging
 apiClient.interceptors.request.use(
   (config) => {
-    console.log('API Request:', config.method?.toUpperCase(), config.url, config.data);
+    const startTime = performance.now();
+    config.startTime = startTime;
+    console.log('🚀 API Request:', config.method?.toUpperCase(), config.url);
     return config;
   },
   (error) => {
-    console.error('API Request Error:', error);
+    console.error('❌ API Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -25,11 +27,13 @@ apiClient.interceptors.request.use(
 // Add response interceptor for debugging
 apiClient.interceptors.response.use(
   (response) => {
-    console.log('API Response:', response.status, response.data);
+    const duration = performance.now() - (response.config.startTime || 0);
+    console.log(`✅ API Response: ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url} - ${duration.toFixed(2)}ms`);
     return response;
   },
   (error) => {
-    console.error('API Response Error:', error.response?.status, error.response?.data);
+    const duration = performance.now() - (error.config?.startTime || 0);
+    console.error(`❌ API Response Error: ${error.response?.status || 'TIMEOUT'} ${error.config?.method?.toUpperCase()} ${error.config?.url} - ${duration.toFixed(2)}ms`, error.response?.data);
     return Promise.reject(error);
   }
 );

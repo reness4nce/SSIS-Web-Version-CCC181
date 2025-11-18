@@ -618,8 +618,8 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    color: #ffffff;
+    transition: all .4s cubic-bezier(.175, .885, .32, 1.275);
+    color: #fff;
     position: relative;
     overflow: hidden;
     font-weight: 600;
@@ -632,17 +632,17 @@
     left: 50%;
     width: 0;
     height: 0;
-    background: rgba(173, 122, 50, 0.3);
+    background: rgba(173, 122, 50, .3);
     border-radius: 50%;
     transform: translate(-50%, -50%);
-    transition: all 0.3s ease;
+    transition: all .3s ease;
 }
 
 .settings-icon:hover {
-    background: rgba(173, 122, 50, 0.35);
+    background: rgba(173, 122, 50, .35);
     color: #D4AF37;
     transform: rotate(180deg) scale(1.1);
-    box-shadow: 0 8px 25px rgba(173, 122, 50, 0.4);
+    box-shadow: 0 8px 25px rgba(173, 122, 50, .4);
 }
 
 .settings-icon:hover::before {
@@ -650,25 +650,63 @@
     height: 100%;
 }
 
-/* Enhanced Profile Popover with high contrast */
+/* User avatar button styles */
+.user-avatar-button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: rgba(173, 122, 50, 0.15);
+    border-radius: 14px;
+    border: 1px solid rgba(173, 122, 50, 0.3);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    width: 100%;
+}
+
+.user-avatar-button:hover {
+    background: rgba(173, 122, 50, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    border-color: rgba(173, 122, 50, 0.4);
+}
+
+.user-avatar-button:focus {
+    outline: 2px solid rgba(173, 122, 50, 0.6);
+    outline-offset: 2px;
+}
+
+/* Profile arrow rotation */
+.profile-arrow {
+    transition: transform 0.3s ease;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.profile-arrow.rotated {
+    transform: rotate(180deg);
+}
+
+/* Enhance Profile Popover with better positioning */
 .profile-popover {
     position: absolute;
-    bottom: 100%;
-    left: 20px;
-    right: 20px;
+    bottom: 110%;
+    left: 0;
+    right: 0;
     background: rgba(90, 56, 32, 0.98);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(173, 122, 50, 0.4);
     border-radius: 12px;
-    padding: 12px;
-    margin-bottom: 8px;
+    padding: 8px;
+    margin-bottom: 4px;
     opacity: 0;
     visibility: hidden;
     transform: translateY(10px);
     transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    z-index: 1000;
+    z-index: 1050;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+    width: 100%;
+    min-width: 200px;
 }
 
 .profile-popover.active {
@@ -681,13 +719,17 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 12px;
+    padding: 12px 14px;
     border-radius: 8px;
     color: rgba(255, 255, 255, 0.95);
     cursor: pointer;
     transition: all 0.2s ease;
     font-size: 0.9rem;
     font-weight: 600;
+    width: 100%;
+    background: none;
+    border: none;
+    text-align: left;
 }
 
 .profile-popover-item:hover {
@@ -695,6 +737,115 @@
     color: #D4AF37;
     transform: translateX(5px);
 }
+
+.profile-popover-item:focus {
+    outline: 2px solid rgba(173, 122, 50, 0.6);
+    outline-offset: 2px;
+    background: rgba(173, 122, 50, 0.2);
+}
+
+/* New Settings Popover Styles */
+.settings-popover {
+    position: absolute;
+    bottom: 60px;
+    right: 20px;
+    background: rgba(90, 56, 32, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(173, 122, 50, 0.4);
+    border-radius: 12px;
+    padding: 16px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index: 1050;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+    min-width: 240px;
+    max-width: 280px;
+}
+
+.settings-popover.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.settings-header {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(173, 122, 50, 0.3);
+}
+
+.settings-header h4 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.settings-item {
+    margin-bottom: 12px;
+}
+
+.settings-item:last-child {
+    margin-bottom: 0;
+}
+
+.settings-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 500;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+
+.settings-label:hover {
+    background: rgba(173, 122, 50, 0.1);
+    color: #ffffff;
+}
+
+.settings-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: rgba(173, 122, 50, 0.8);
+}
+
+.settings-popover-item {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px;
+    text-align: left;
+    transition: all 0.2s ease;
+}
+
+.settings-popover-item:hover {
+    background: rgba(173, 122, 50, 0.2);
+    color: #D4AF37;
+    transform: translateX(3px);
+}
+
+.settings-popover-item:focus {
+    outline: 2px solid rgba(173, 122, 50, 0.6);
+    outline-offset: 2px;
+    background: rgba(173, 122, 50, 0.15);
+}
+
+
 
 /* Enhanced Modern Logout Button with high contrast */
 .logout-button {
