@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from .models import Program
 from ..college.models import College
 from ..student.models import Student
+from ..cache import clear_dashboard_cache
 from ..supabase import get_all, get_one, insert_record, update_record, delete_record, count_records, execute_raw_sql, paginate_query, supabase_manager
 import re
 
@@ -162,7 +163,8 @@ def create_program():
             college=data["college"].upper().strip()
         )
 
-        # Note: Programs are now fetched fresh from database for validation (no cache to clear)
+        # Clear dashboard cache since stats changed
+        clear_dashboard_cache()
 
         return jsonify({
             "message": "Program created successfully",
@@ -225,6 +227,9 @@ def update_program(program_code):
         final_code = update_data.get('code', program_code)
         updated_program = Program.get_by_code(final_code)
 
+        # Clear dashboard cache since stats may have changed
+        clear_dashboard_cache()
+
         return jsonify({
             "message": "Program updated successfully",
             "program": updated_program,
@@ -257,7 +262,8 @@ def delete_program(program_code):
         if not rows_deleted:
             return jsonify({"error": "Program not found"}), 404
 
-        # Note: Programs are now fetched fresh from database for validation (no cache to clear)
+        # Clear dashboard cache since stats changed
+        clear_dashboard_cache()
 
         return jsonify({"message": "Program deleted successfully"}), 200
 

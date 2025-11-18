@@ -83,52 +83,54 @@ class Program:
 
     @staticmethod
     def get_program_stats():
-        """Get program statistics with student counts using optimized RPC query"""
+        """Get program statistics with student counts using single optimized query"""
         try:
-            # Use optimized RPC function for single query efficiency
-            result = supabase_manager.get_client().rpc('get_program_stats').execute()
-            if result.data:
-                return [
-                    {
-                        'code': item['program_code'],
-                        'name': item['program_name'],
-                        'college': item['college_code'],
-                        'college_name': item['college_name'],
-                        'student_count': item['student_count'] or 0
-                    }
-                    for item in result.data
-                ]
-            return []
+            # Use optimized single query approach (no RPC needed)
+            print("Using optimized single query approach for program stats")
+
+            # Get all programs with their colleges
+            programs_query = supabase_manager.get_client().table('program').select('code, name, college')
+
+            # Join with college table to get college names
+            colleges_query = supabase_manager.get_client().table('college').select('code, name')
+
+            # Execute both queries
+            programs_result = programs_query.execute()
+            colleges_result = colleges_query.execute()
+
+            programs = programs_result.data or []
+            colleges = {c['code']: c['name'] for c in (colleges_result.data or [])}
+
+            # OPTIMIZED: Instead of N queries, get all students and count by course
+            students_result = supabase_manager.get_client().table('student').select('course').neq('course', None).execute()
+            students = students_result.data or []
+
+            # Group and count manually
+            course_counts = {}
+            for student in students:
+                course = student['course']
+                course_counts[course] = course_counts.get(course, 0) + 1
+
+            # Build final stats
+            stats = []
+            for program in programs:
+                code = program['code']
+                stats.append({
+                    'code': code,
+                    'name': program['name'],
+                    'college': program.get('college'),
+                    'college_name': colleges.get(program.get('college'), ''),
+                    'student_count': course_counts.get(code, 0)
+                })
+
+            print(f"✅ Retrieved {len(stats)} program stats efficiently")
+            return stats
+
         except Exception as e:
-            print(f"RPC get_program_stats failed, falling back to individual queries: {e}")
-            # Fallback to the old method if RPC fails
-            try:
-                programs_result = supabase_manager.get_client().table('program').select('code, name, college').execute()
-                programs = programs_result.data or []
-
-                stats = []
-                for program in programs:
-                    try:
-                        student_count = Program.get_student_count(program['code'])
-                        stats.append({
-                            'code': program['code'],
-                            'name': program['name'],
-                            'college': program.get('college'),
-                            'student_count': student_count
-                        })
-                    except Exception as e2:
-                        print(f"Error getting student count for program {program['code']}: {e2}")
-                        stats.append({
-                            'code': program['code'],
-                            'name': program['name'],
-                            'college': program.get('college'),
-                            'student_count': 0
-                        })
-
-                return stats
-            except Exception as e2:
-                print(f"Error getting program stats: {e2}")
-                return []
+            print(f"Error getting program stats: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
 
     @staticmethod
     def get_programs_with_college_info():

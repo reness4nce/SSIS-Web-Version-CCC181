@@ -7,12 +7,13 @@ Flask-CORS==4.0.0
 Flask-WTF==1.2.1
 WTForms==3.1.1
 Werkzeug==3.0.1
+Flask-Caching==2.1.0
 supabase==2.7.2
 python-dotenv==1.0.0
 httpx==0.26.0
 websockets==15.0.1
 
-# NEW: Rate Limiting (MEDIUM PRIORITY #7)
+
 Flask-Limiter==3.5.0
 
 # Recommended additions for production

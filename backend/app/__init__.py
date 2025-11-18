@@ -2,6 +2,7 @@ import os
 import sys
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging
@@ -51,17 +52,25 @@ def create_app(config=None):
     
     # Apply configuration
     app.config.from_object(flask_config)
-    
+
     # Override with provided config if any
     if config:
         app.config.update(config)
-    
+
+    # Cache configuration for dashboard optimization
+    app.config['CACHE_TYPE'] = 'simple'  # In-memory cache for dashboard stats
+    app.config['CACHE_DEFAULT_TIMEOUT'] = 600  # 10 minutes TTL
+
     # Create instance folder
     os.makedirs(app.instance_path, exist_ok=True)
-    
-    # Setup logging 
+
+    # Setup logging
     setup_logging(app)
-    
+
+    # Initialize cache for dashboard optimization
+    global cache
+    cache = Cache(app)
+
     # Enable CORS for Frontend Communication
     CORS(app, supports_credentials=True, origins=[
         "http://localhost:3000",

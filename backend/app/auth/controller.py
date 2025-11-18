@@ -231,15 +231,8 @@ def signup():
 def get_dashboard_stats():
     """Get cached dashboard statistics"""
     try:
-        total_students = Student.count_students()
-        total_programs = len(Program.get_all_programs())
-        total_colleges = len(College.get_all_colleges())
-
-        return jsonify({
-            "total_students": total_students,
-            "total_programs": total_programs,
-            "total_colleges": total_colleges
-        }), 200
+        stats = get_cached_dashboard_stats()
+        return jsonify(stats), 200
 
     except Exception as e:
         logger.error(f"Dashboard stats error: {str(e)}", exc_info=True)
@@ -249,37 +242,11 @@ def get_dashboard_stats():
 @auth_bp.route('/dashboard/charts', methods=['GET'])
 @require_auth
 def get_dashboard_charts():
-    """Get cach chart data for dashboard"""
+    """Get cached chart data for dashboard"""
     try:
-          # Students by Program
-        try:
-            program_stats = Program.get_program_stats()
-            students_by_program = [
-                {
-                    "program_code": prog['code'],
-                    "program_name": prog.get('name', 'Unknown'),
-                    "student_count": prog.get('student_count', 0)
-                }
-                for prog in program_stats or []
-            ]
-        except Exception as e:
-            logger.error(f"Error getting program stats: {e}")
-            students_by_program = []
+        students_by_program = get_cached_dashboard_program_charts()
+        students_by_college = get_cached_dashboard_college_charts()
 
-        # Students by College
-        try:
-            college_stats = College.get_college_stats()
-            students_by_college = [
-                {
-                    "college_code": col.get('college_code', col.get('code', 'Unknown')),
-                    "college_name": col.get('college_name', col.get('name', 'Unknown')),
-                    "student_count": col.get('student_count', 0)
-                }
-                for col in college_stats or []
-            ]
-        except Exception as e:
-            logger.error(f"Error getting college stats: {e}")
-            students_by_college = []
         return jsonify({
             "students_by_program": students_by_program,
             "students_by_college": students_by_college
