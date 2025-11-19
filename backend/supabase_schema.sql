@@ -96,7 +96,9 @@ ON CONFLICT (username) DO NOTHING;
 -- Enable RLS on all tables
 ALTER TABLE college ENABLE ROW LEVEL SECURITY;
 ALTER TABLE program ENABLE ROW LEVEL SECURITY;
-ALTER TABLE student ENABLE ROW LEVEL SECURITY;
+-- DISABLE RLS on student table to allow custom authentication system
+-- ALTER TABLE student ENABLE ROW LEVEL SECURITY;
+ALTER TABLE student DISABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for public read access (adjust as needed for your use case)
@@ -105,14 +107,15 @@ CREATE POLICY "Allow public read access on program" ON program FOR SELECT USING 
 CREATE POLICY "Allow public read access on student" ON student FOR SELECT USING (true);
 
 -- Create policies for insert/update/delete (restrict as needed)
-CREATE POLICY "Allow authenticated users to modify college" ON college 
+CREATE POLICY "Allow authenticated users to modify college" ON college
     FOR ALL USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Allow authenticated users to modify program" ON program 
+CREATE POLICY "Allow authenticated users to modify program" ON program
     FOR ALL USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Allow authenticated users to modify student" ON student 
-    FOR ALL USING (auth.role() = 'authenticated');
+-- DISABLE student table RLS policy - uses custom authentication
+-- CREATE POLICY "Allow authenticated users to modify student" ON student
+--     FOR ALL USING (auth.role() = 'authenticated');
 
 -- Users table policies (more restrictive)
 CREATE POLICY "Allow authenticated users to read users" ON users 
@@ -186,18 +189,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Create storage bucket for student photos (execute this separately in Supabase dashboard)
 -- Name: student-photos
 -- Public: true
+-- RLS: Disabled (no RLS policies needed)
 -- File size limit: 5MB
 -- Allowed MIME types: image/jpeg, image/png, image/webp
 
--- Storage Policies (execute after creating bucket)
-CREATE POLICY "Allow public read access to student photos" ON storage.objects
-    FOR SELECT USING (bucket_id = 'student-photos');
-
-CREATE POLICY "Allow authenticated users to upload student photos" ON storage.objects
-    FOR INSERT WITH CHECK (bucket_id = 'student-photos' AND auth.role() = 'authenticated');
-
-CREATE POLICY "Allow users to update their own student photos" ON storage.objects
-    FOR UPDATE USING (bucket_id = 'student-photos' AND auth.role() = 'authenticated');
-
-CREATE POLICY "Allow service role to manage all student photos" ON storage.objects
-    FOR ALL USING (bucket_id = 'student-photos' AND auth.jwt() ->> 'role' = 'service_role');
+-- Note: Since RLS is disabled on the bucket, no storage policies are required
+-- The bucket is publicly accessible for all operations

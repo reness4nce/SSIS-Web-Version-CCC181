@@ -41,7 +41,7 @@ class College:
         return insert_record("college", college_data, returning="*")
 
     @staticmethod
-    def update_college(college_id=None, college_code=None, name=None):
+    def update_college(college_id=None, college_code=None, name=None, new_code=None):
         """Update college information by ID or code"""
         if not college_id and not college_code:
             return None
@@ -49,6 +49,8 @@ class College:
         update_data = {}
         if name:
             update_data['name'] = name
+        if new_code:
+            update_data['code'] = new_code
 
         if not update_data:
             return None
@@ -56,10 +58,10 @@ class College:
         # Update by ID if provided, otherwise by code
         if college_id:
             where_clause = "id = %s"
-            params = {**update_data, 'id': college_id}
+            params = [college_id]  # FIXED: Use list for WHERE clause parameter
         else:
             where_clause = "code = %s"
-            params = {**update_data, 'code': college_code}
+            params = [college_code]  # FIXED: Use list for WHERE clause parameter
 
         return update_record("college", update_data, where_clause, params=params)
 

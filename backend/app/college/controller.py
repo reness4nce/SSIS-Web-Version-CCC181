@@ -5,21 +5,19 @@ from ..program.models import Program
 from ..supabase import get_all, get_one, insert_record, update_record, delete_record, count_records, execute_raw_sql, paginate_query, supabase_manager
 import re
 
-# Create Blueprint for college routes
+
 college_bp = Blueprint("college", __name__, url_prefix="/api/colleges")
 
 def validate_college_data(data, college_code=None, is_update=False):
     """Validate college data"""
     errors = []
 
-    # For updates, only validate fields that are actually being provided
     if is_update:
         if "name" in data and not data["name"]:
             errors.append("name cannot be empty")
         if "code" in data and not data["code"]:
             errors.append("code cannot be empty")
     else:
-        # For creates, both fields are required
         required_fields = ["code", "name"]
         for field in required_fields:
             if field not in data or not data[field]:
@@ -30,13 +28,12 @@ def validate_college_data(data, college_code=None, is_update=False):
         if not re.match(r"^[A-Z0-9\-]{2,10}$", code):
             errors.append("College code must be 2-10 characters, letters, numbers, and hyphens only")
 
-        # Check if college code already exists using Supabase model
         existing = College.get_by_code(code)
         if existing:
-            # If this is an update and the existing code is different from current college code, it's a conflict
+            
             if is_update and college_code and existing["code"] != college_code:
                 errors.append("College code already exists")
-            # If this is a create and code exists, it's a conflict
+            
             elif not is_update:
                 errors.append("College code already exists")
 
@@ -60,18 +57,18 @@ def get_colleges():
         sort = request.args.get("sort", "code", type=str)
         order = request.args.get("order", "asc", type=str)
 
-        # Get all colleges using Supabase model
+        
         colleges = College.get_all_colleges()
         
-        # Apply search filter
+      
         if search:
             search_term = search.lower()
             if filter_field == "all":
-                colleges = [c for c in colleges if search_term in c['code'].lower() or search_term in c['name'].lower()]
+                colleges = [c for c in colleges if search_term in (c.get('code') or '').lower() or search_term in (c.get('name') or '').lower()]
             elif filter_field == "code":
-                colleges = [c for c in colleges if search_term in c['code'].lower()]
+                colleges = [c for c in colleges if search_term in (c.get('code') or '').lower()]
             elif filter_field == "name":
-                colleges = [c for c in colleges if search_term in c['name'].lower()]
+                colleges = [c for c in colleges if search_term in (c.get('name') or '').lower()]
 
         # Apply sorting
         reverse = order.lower() == "desc"
@@ -198,7 +195,7 @@ def update_college(college_identifier):
         rows_updated = College.update_college(
             college_code=college_identifier.upper(),
             name=update_data.get('name'),
-            college_code=update_data.get('code')
+            new_code=update_data.get('code')
         )
 
         if not rows_updated:

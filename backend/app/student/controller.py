@@ -18,7 +18,7 @@ MAX_PAGE_SIZE = 100
 DEFAULT_PAGE_SIZE = 10
 MAX_FILE_SIZE_MB = 5
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
-ALLOWED_IMAGE_TYPES = ['jpeg', 'png', 'webp']
+ALLOWED_IMAGE_TYPES = ['jpeg', 'jpg', 'png', 'webp']
 
 
 # ============================================
@@ -98,7 +98,7 @@ def validate_student_data(data, student_id=None):
 @student_bp.route("", methods=["GET"])
 @require_auth
 def get_students():
-    """Get students with database-level filterin"""
+    """Get students with in-memory filtering (consistent with colleges/programs)"""
     try:
         page = request.args.get("page", 1, type=int)
         per_page = min(request.args.get("per_page", DEFAULT_PAGE_SIZE, type=int), MAX_PAGE_SIZE)
@@ -111,47 +111,69 @@ def get_students():
 
         logger.debug(f"Get students: page={page}, search='{search}', filter={filter_field}")
 
-        # Build WHERE clause for database filtering
-        where_conditions = []
-        params = []
+        # Get all students first
+        students = Student.get_all_students()
 
-        # Course filter
+        # Filter by course and year first
         if course_filter:
-            where_conditions.append("course = %s")
-            params.append(course_filter)
+            students = [s for s in students if s.get('course') and s['course'].upper() == course_filter.upper()]
 
-        # Year filter
         if year_filter:
-            where_conditions.append("year = %s")
-            params.append(int(year_filter))
+            year = int(year_filter)
+            students = [s for s in students if s.get('year') == year]
 
-        # Search filter
+        # Apply search filter (case-insensitive)
         if search:
-            search_term = f"%{search}%"
+            search_term = search.lower()
             if filter_field == "all":
-                where_conditions.append("(id ILIKE %s OR firstname ILIKE %s OR lastname ILIKE %s OR course ILIKE %s)")
-                params.extend([search_term] * 4)
-            else:
-                where_conditions.append(f"{filter_field} ILIKE %s")
-                params.append(search_term)
+                students = [s for s in students if
+                           search_term in (s.get('id') or '').lower() or
+                           search_term in (s.get('firstname') or '').lower() or
+                           search_term in (s.get('lastname') or '').lower() or
+                           search_term in ((s.get('firstname') or '') + ' ' + (s.get('lastname') or '')).strip().lower() or
+                           search_term in (s.get('course') or '').lower()]
+            elif filter_field == "id":
+                students = [s for s in students if search_term in (s.get('id') or '').lower()]
+            elif filter_field == "firstname":
+                students = [s for s in students if search_term in (s.get('firstname') or '').lower()]
+            elif filter_field == "lastname":
+                students = [s for s in students if search_term in (s.get('lastname') or '').lower()]
+            elif filter_field in ["name", "fullname"]:
+                students = [s for s in students if
+                           search_term in ((s.get('firstname') or '') + ' ' + (s.get('lastname') or '')).strip().lower()]
+            elif filter_field == "course":
+                students = [s for s in students if search_term in (s.get('course') or '').lower()]
 
-        where_clause = " AND ".join(where_conditions) if where_conditions else None
+        # Apply sorting
+        reverse = order.lower() == "desc"
+        if sort == "id":
+            students.sort(key=lambda x: x['id'], reverse=reverse)
+        elif sort == "firstname":
+            students.sort(key=lambda x: x['firstname'], reverse=reverse)
+        elif sort == "lastname":
+            students.sort(key=lambda x: x['lastname'], reverse=reverse)
+        elif sort == "course":
+            students.sort(key=lambda x: x.get('course') or '', reverse=reverse)
+        elif sort == "year":
+            students.sort(key=lambda x: x['year'], reverse=reverse)
+        elif sort == "gender":
+            students.sort(key=lambda x: x['gender'], reverse=reverse)
 
-        # Get total count
-        total = Student.count_students_filtered(where_clause, params)
+        # Apply pagination
+        total = len(students)
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_students = students[start:end]
 
-        # Get paginated data with sorting
-        students = Student.get_all_students_filtered(
-            where_clause=where_clause,
-            params=params,
-            order_by=sort,
-            order_direction=order.upper(),
-            limit=per_page,
-            offset=(page - 1) * per_page
-        )
+        # Enrich with course_name for display
+        valid_programs = get_valid_programs_cached()
+        for student in paginated_students:
+            course_code = student.get('course')
+            if course_code and course_code.upper() in valid_programs:
+                student['course_name'] = valid_programs[course_code.upper()].get('name')
 
         return jsonify({
-            "items": students,
+            "items": paginated_students,
             "total": total,
             "page": page,
             "pages": (total + per_page - 1) // per_page if total > 0 else 0,

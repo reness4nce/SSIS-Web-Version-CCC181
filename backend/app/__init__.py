@@ -1,10 +1,12 @@
 import os
-from flask import Flask, jsonify
-from flask_cors import CORS
-
-# Import configuration
 import sys
-import os
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import logging
+
+# Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import get_config
 
@@ -14,103 +16,181 @@ from .student.models import Student
 from .college.models import College
 from .program.models import Program
 
-# --- Main Application Factory ---
-def create_app(config=None):
-    """Creates and configures the Flask application."""
-    import os as os_module
+# Initialize rate limiter as global singleton (persists across Flask reloads)
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
 
+
+def setup_logging(app):
+    """Configure application logging"""
+    log_level = logging.DEBUG if app.config.get('DEBUG') else logging.INFO
+    
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Set specific log levels for noisy libraries
+    logging.getLogger('werkzeug').setLevel(logging.INFO)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    
+    app.logger.setLevel(log_level)
+    app.logger.info(f"Application started in {os.getenv('FLASK_ENV', 'development')} mode")
+
+
+def create_app(config=None):
+    """Creates and configures the Flask application with enhanced features."""
+    
     # Get configuration based on environment
     flask_config = get_config()
-    app = Flask(__name__, instance_path=os_module.path.join(os_module.path.dirname(os_module.path.abspath(__file__)), 'instance'))
-
+    app = Flask(__name__, instance_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance'))
+    
     # Apply configuration
     app.config.from_object(flask_config)
-
+    
     # Override with provided config if any
     if config:
         app.config.update(config)
+    
+    # Create instance folder
+    os.makedirs(app.instance_path, exist_ok=True)
+    
+    # Setup logging 
+    setup_logging(app)
+    
+    # Enable CORS for Frontend Communication
+    CORS(app, supports_credentials=True, origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ])
 
-    os_module.makedirs(app.instance_path, exist_ok=True)
+    # Initialize rate limiter with app instance
+    limiter.init_app(app)
 
-    # --- Enable CORS for Frontend Communication ---
-    CORS(app, supports_credentials=True, origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001", "http://localhost:5173", "http://127.0.0.1:5173"])
-
-    # --- Register API Blueprints ---
+    # Register API Blueprints with versioning
     from .auth.controller import auth_bp
     from .college.controller import college_bp
     from .program.controller import program_bp
     from .student.controller import student_bp
 
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(college_bp, url_prefix='/api/colleges')
-    app.register_blueprint(program_bp, url_prefix='/api/programs')
-    app.register_blueprint(student_bp, url_prefix='/api/students')
+    # Apply rate limit to photo upload endpoint
+    @limiter.limit("10 per hour")
+    def rate_limit_photo_upload():
+        pass
 
-    # --- Register CLI Commands ---
-    import sys
-    import os as os_module
-    sys.path.append(os_module.path.dirname(os_module.path.dirname(os_module.path.abspath(__file__))))
+    # Apply to student photo upload
+    student_bp.before_request(lambda: rate_limit_photo_upload() if 'photo' in request.endpoint else None)
+
+    # API v1 endpoints
+    app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
+    app.register_blueprint(college_bp, url_prefix='/api/v1/colleges')
+    app.register_blueprint(program_bp, url_prefix='/api/v1/programs')
+    app.register_blueprint(student_bp, url_prefix='/api/v1/students')
+    
+    # Legacy endpoints (backward compatibility - remove after frontend update)
+    app.register_blueprint(auth_bp, url_prefix='/api/auth', name='auth_legacy')
+    app.register_blueprint(college_bp, url_prefix='/api/colleges', name='college_legacy')
+    app.register_blueprint(program_bp, url_prefix='/api/programs', name='program_legacy')
+    app.register_blueprint(student_bp, url_prefix='/api/students', name='student_legacy')
+
+    # Health check endpoint
+    @app.route('/health')
+    def health():
+        return {"status": "healthy", "version": "1.0.0"}, 200
+    
+    # API info endpoint
+    @app.route('/api/v1')
+    def api_info():
+        return {
+            "version": "1.0.0",
+            "endpoints": {
+                "auth": "/api/v1/auth",
+                "students": "/api/v1/students",
+                "colleges": "/api/v1/colleges",
+                "programs": "/api/v1/programs"
+            }
+        }, 200
+    
+    # Register CLI Commands
     import seed_data
-
+    
     @app.cli.command("seed-db")
     def seed_db_command():
         """Seed database with sample data"""
         try:
+            app.logger.info("Starting database seeding...")
             seed_data.seed_database()
             print("✅ Database seeded successfully!")
+            app.logger.info("Database seeding completed")
         except Exception as e:
             print(f"❌ Error seeding database: {e}")
-
+            app.logger.error(f"Database seeding failed: {e}", exc_info=True)
+    
     @app.cli.command("init-db")
     def init_db_command():
         """Initialize database tables"""
         try:
-            # Create all tables using raw SQL
+            app.logger.info("Initializing database tables...")
             User.create_table()
             College.create_table()
             Program.create_table()
             Student.create_table()
             print("✅ Database tables created successfully!")
+            app.logger.info("Database initialization completed")
         except Exception as e:
             print(f"❌ Error creating database tables: {e}")
-
+            app.logger.error(f"Database initialization failed: {e}", exc_info=True)
+    
     @app.cli.command("reset-db")
     def reset_db_command():
         """Reset database (drop and recreate all tables)"""
         try:
-            # Drop tables in reverse order (due to foreign key constraints)
-            from .database import execute_raw_sql
-            execute_raw_sql("DROP TABLE IF EXISTS student", commit=True)
-            execute_raw_sql("DROP TABLE IF EXISTS program", commit=True)
-            execute_raw_sql("DROP TABLE IF EXISTS college", commit=True)
-            execute_raw_sql("DROP TABLE IF EXISTS users", commit=True)
-
+            app.logger.warning("Resetting database - all data will be lost!")
+            from .supabase import execute_raw_sql
+            
+            # Drop tables in reverse order
+            execute_raw_sql("DROP TABLE IF EXISTS student CASCADE", commit=True)
+            execute_raw_sql("DROP TABLE IF EXISTS program CASCADE", commit=True)
+            execute_raw_sql("DROP TABLE IF EXISTS college CASCADE", commit=True)
+            execute_raw_sql("DROP TABLE IF EXISTS users CASCADE", commit=True)
+            
             # Recreate tables
             User.create_table()
             College.create_table()
             Program.create_table()
             Student.create_table()
+            
             print("✅ Database reset successfully!")
+            app.logger.info("Database reset completed")
         except Exception as e:
             print(f"❌ Error resetting database: {e}")
-
+            app.logger.error(f"Database reset failed: {e}", exc_info=True)
+    
     @app.cli.command("fix-rls")
     def fix_rls_command():
         """Fix RLS policies by disabling RLS on student table"""
         try:
-            # Execute the RLS fix
             from .supabase import supabase_manager
-
-            # Disable RLS on student table to fix creation issues
+            
+            app.logger.info("Disabling RLS on student table...")
             client = supabase_manager.get_client()
             result = client.rpc('execute_sql', {'sql': 'ALTER TABLE student DISABLE ROW LEVEL SECURITY;'})
-
+            
             print("✅ RLS disabled on student table successfully!")
             print("🎯 Student creation should now work without RLS violations")
-
+            app.logger.info("RLS fix completed")
         except Exception as e:
             print(f"❌ Error fixing RLS: {e}")
             print("💡 Alternative: Run this SQL in Supabase dashboard:")
             print("   ALTER TABLE student DISABLE ROW LEVEL SECURITY;")
-
+            app.logger.error(f"RLS fix failed: {e}", exc_info=True)
+    
     return app
