@@ -265,6 +265,39 @@ function StudentForm({ onSuccess, student, onClose }) {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Custom ID input handler with masking for XXXX-XXXX format
+  const handleIdChange = (e) => {
+    setErrorMessage("");
+    setFieldErrors(prev => ({ ...prev, id: null }));
+
+    let value = e.target.value;
+
+    // Allow backspace/delete operations
+    if (value.length < formData.id.length) {
+      setFormData({ ...formData, id: value });
+      return;
+    }
+
+    // Build result by allowing only valid characters in correct positions
+    let result = '';
+    for (let i = 0; i < value.length && result.length < 9; i++) {
+      const char = value[i];
+      if (char >= '0' && char <= '9') {
+        result += char;
+        // Auto-insert dash after exactly 4 digits (if not already present)
+        if (result.replace('-', '').length === 4 && !result.includes('-')) {
+          result += '-';
+        }
+      } else if (char === '-' && result.length === 4) {
+        // Allow dash only in the correct position (after 4 digits)
+        result += char;
+      }
+      // Ignore all other characters
+    }
+
+    setFormData({ ...formData, id: result });
+  };
+
   // Enhanced photo validation with better error messages
   const validatePhotoFile = (file) => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -746,7 +779,7 @@ function StudentForm({ onSuccess, student, onClose }) {
             className="form-control"
             placeholder="e.g., 2024-0001"
             value={formData.id}
-            onChange={handleChange}
+            onChange={handleIdChange}
             required
             aria-describedby={fieldErrors.id ? "id-error" : undefined}
             style={{ paddingRight: isCheckingId ? '50px' : '16px' }}
