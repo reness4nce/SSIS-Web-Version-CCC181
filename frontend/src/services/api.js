@@ -3,7 +3,7 @@ import axios from "axios";
 
 // This apiClient is for your main API endpoints (/colleges, /students, etc.)
 const apiClient = axios.create({
-  baseURL: "http://localhost:5000/api", // Updated to match backend API routes
+  baseURL: "/api", // Use relative URL for single-server deployment
   withCredentials: true, // This is CRUCIAL for sending session cookies
   headers: {
     "Content-Type": "application/json",
@@ -40,7 +40,7 @@ apiClient.interceptors.response.use(
 
 // This apiClient is specifically for the /auth routes, which have a different path
 const authApiClient = axios.create({
-  baseURL: "http://localhost:5000/api", // Base URL with /api prefix for consistency
+  baseURL: "/api", // Use relative URL for single-server deployment
   withCredentials: true, // Also crucial here
   headers: {
     "Content-Type": "application/json",

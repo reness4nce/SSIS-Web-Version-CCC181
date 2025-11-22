@@ -1,6 +1,6 @@
 import os
 import sys
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_caching import Cache
 from flask_limiter import Limiter
@@ -48,7 +48,8 @@ def create_app(config=None):
     
     # Get configuration based on environment
     flask_config = get_config()
-    app = Flask(__name__, instance_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance'))
+    app = Flask(__name__,
+                instance_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance'))
     
     # Apply configuration
     app.config.from_object(flask_config)
@@ -78,7 +79,9 @@ def create_app(config=None):
         "http://localhost:3001",
         "http://127.0.0.1:3001",
         "http://localhost:5173",
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:5173",
+        "http://localhost:5000",
+        "http://127.0.0.1:5000"
     ])
 
     # Initialize rate limiter with app instance
@@ -127,6 +130,35 @@ def create_app(config=None):
                 "programs": "/api/v1/programs"
             }
         }, 200
+
+    # Static file serving for React frontend
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve_frontend(path):
+        # Skip API routes - let them be handled by blueprints
+        if path.startswith('api/'):
+            from flask import abort
+            abort(404)
+
+        # Get the frontend dist directory
+        frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'frontend', 'dist')
+
+        # If the path exists as a file, serve it
+        if path and os.path.exists(os.path.join(frontend_dist, path)):
+            return send_from_directory(frontend_dist, path)
+
+        # For all other routes, serve index.html (SPA routing)
+        return send_from_directory(frontend_dist, 'index.html')
+
+    # Handle 404 errors by serving the SPA
+    @app.errorhandler(404)
+    def page_not_found(error):
+        # Only serve SPA for non-API requests
+        if request.path.startswith('/api/'):
+            return {"error": "API endpoint not found"}, 404
+
+        frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'frontend', 'dist')
+        return send_from_directory(frontend_dist, 'index.html')
     
     # Register CLI Commands
     import seed_data
