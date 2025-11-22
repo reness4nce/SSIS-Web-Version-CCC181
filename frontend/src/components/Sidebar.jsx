@@ -1,18 +1,13 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-    MdDashboard, 
-    MdPeople, 
-    MdSchool, 
-    MdMenuBook, 
-    MdLogout, 
-    MdSettings,
+import {
+    MdDashboard,
+    MdPeople,
+    MdSchool,
+    MdMenuBook,
+    MdLogout,
     MdExpandMore,
-    MdExpandLess,
-    MdPerson,
-    MdNotifications,
-    MdKeyboardArrowDown,
-    MdKeyboardArrowUp
+    MdExpandLess
 } from 'react-icons/md';
 import { useAuth } from '../contexts/AuthContext';
 import { useSidebar } from '../contexts/SidebarContext';
@@ -20,42 +15,18 @@ import './Sidebar.css';
 
 const Sidebar = () => {
     const { currentUser, logout } = useAuth();
-    const { 
-        isOpen, 
-        isCollapsed, 
-        handleNavigation, 
-        expandSidebar, 
+    const {
+        isOpen,
+        isCollapsed,
+        handleNavigation,
+        expandSidebar,
         startAutoCollapseTimer,
         cancelAutoCollapseTimer,
-        toggleCollapsed,
-        setAutoCollapse,
-        toggleSidebar
+        toggleCollapsed
     } = useSidebar();
-    
+
     const navigate = useNavigate();
     const location = useLocation();
-    const [showProfilePopover, setShowProfilePopover] = useState(false);
-    const [showSettingsPopover, setShowSettingsPopover] = useState(false);
-    const [sidebarSettings, setSidebarSettings] = useState(() => {
-        try {
-            const saved = localStorage.getItem('sidebar-settings');
-            return saved ? JSON.parse(saved) : {
-                autoCollapse: true,
-                theme: 'default'
-            };
-        } catch (error) {
-            console.warn('Failed to load sidebar settings:', error);
-            return {
-                autoCollapse: true,
-                theme: 'default'
-            };
-        }
-    });
-
-    // Refs for focus management
-    const profileButtonRef = useRef(null);
-    const settingsButtonRef = useRef(null);
-    const settingsPopoverRef = useRef(null);
 
     // Optimized logout handler
     const handleLogout = useCallback(async () => {
@@ -67,59 +38,10 @@ const Sidebar = () => {
         }
     }, [logout, navigate]);
 
-    // Profile actions - implemented properly
-    const handleProfileClick = useCallback(() => {
-        navigate('/profile'); // Navigate to profile page
-        setShowProfilePopover(false);
-        setShowSettingsPopover(false);
-        handleNavigation(); // Handle sidebar collapse on mobile
-    }, [navigate, handleNavigation]);
-
-    const handleNotificationsClick = useCallback(() => {
-        // Could navigate to notifications page or show modal
-        console.log('Navigate to notifications');
-        setShowProfilePopover(false);
-        setShowSettingsPopover(false);
-        handleNavigation();
-    }, [handleNavigation]);
-
-    // Settings functionality - implemented properly
-    const handleSettingsClick = useCallback(() => {
-        setShowSettingsPopover(prev => !prev);
-        setShowProfilePopover(false);
-    }, []);
-
-    const handleSettingsClose = useCallback(() => {
-        setShowSettingsPopover(false);
-        if (settingsButtonRef.current) {
-            settingsButtonRef.current.focus();
-        }
-    }, []);
-
-    const handleSettingChange = useCallback((key, value) => {
-        const newSettings = { ...sidebarSettings, [key]: value };
-        setSidebarSettings(newSettings);
-        
-        try {
-            localStorage.setItem('sidebar-settings', JSON.stringify(newSettings));
-        } catch (error) {
-            console.warn('Failed to save sidebar settings:', error);
-        }
-
-        // Apply settings immediately
-        if (key === 'autoCollapse') {
-            setAutoCollapse(value);
-        }
-    }, [sidebarSettings, setAutoCollapse]);
-
     // Enhanced collapse toggle with better UX
     const handleCollapseToggle = useCallback(() => {
         toggleCollapsed();
         cancelAutoCollapseTimer();
-        
-        // Close popovers if open
-        setShowProfilePopover(false);
-        setShowSettingsPopover(false);
     }, [toggleCollapsed, cancelAutoCollapseTimer]);
 
     // Optimized mouse interactions
@@ -134,17 +56,6 @@ const Sidebar = () => {
             startAutoCollapseTimer();
         }
     }, [isCollapsed, startAutoCollapseTimer]);
-
-    // Avatar initials generation - memoized for performance
-    const getAvatarInitials = useCallback((username) => {
-        if (!username) return 'A';
-        return username
-            .split(' ')
-            .map(name => name.charAt(0))
-            .join('')
-            .toUpperCase()
-            .slice(0, 2);
-    }, []);
 
     // Optimized tooltip text generation
     const getTooltipText = useCallback((path, text) => {
@@ -170,9 +81,6 @@ const Sidebar = () => {
     const handleNavClick = useCallback((path) => {
         navigate(path);
         handleNavigation();
-        // Close popovers on navigation
-        setShowProfilePopover(false);
-        setShowSettingsPopover(false);
     }, [navigate, handleNavigation]);
 
     // Enhanced keyboard navigation
@@ -180,83 +88,10 @@ const Sidebar = () => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             action();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            setShowProfilePopover(false);
-            setShowSettingsPopover(false);
-            if (profileButtonRef.current) {
-                profileButtonRef.current.focus();
-            }
         }
     }, []);
 
-    const handleSettingsKeyDown = useCallback((e, action) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            action();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            setShowSettingsPopover(false);
-            if (settingsButtonRef.current) {
-                settingsButtonRef.current.focus();
-            }
-        } else if (e.key === 'ArrowDown' && showSettingsPopover) {
-            e.preventDefault();
-            if (settingsPopoverRef.current) {
-                const firstItem = settingsPopoverRef.current.querySelector('.settings-popover-item');
-                if (firstItem) firstItem.focus();
-            }
-        }
-    }, [showSettingsPopover]);
 
-    // Close popovers when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (!event.target.closest('.user-section')) {
-                setShowProfilePopover(false);
-                setShowSettingsPopover(false);
-            }
-        };
-
-        if (showProfilePopover || showSettingsPopover) {
-            document.addEventListener('click', handleClickOutside);
-            return () => document.removeEventListener('click', handleClickOutside);
-        }
-    }, [showProfilePopover, showSettingsPopover]);
-
-    // Keyboard navigation for settings popover
-    useEffect(() => {
-        if (!showSettingsPopover) return;
-
-        const handleSettingsPopoverKeyDown = (e) => {
-            if (e.key === 'Escape') {
-                setShowSettingsPopover(false);
-                if (settingsButtonRef.current) {
-                    settingsButtonRef.current.focus();
-                }
-            } else if (e.key === 'Tab') {
-                const items = Array.from(settingsPopoverRef.current?.querySelectorAll('.settings-popover-item') || []);
-                if (items.length === 0) return;
-
-                if (e.shiftKey) {
-                    // Shift+Tab on first item
-                    if (document.activeElement === items[0]) {
-                        e.preventDefault();
-                        settingsButtonRef.current?.focus();
-                    }
-                } else {
-                    // Tab on last item returns to first
-                    if (document.activeElement === items[items.length - 1]) {
-                        e.preventDefault();
-                        items[0].focus();
-                    }
-                }
-            }
-        };
-
-        document.addEventListener('keydown', handleSettingsPopoverKeyDown);
-        return () => document.removeEventListener('keydown', handleSettingsPopoverKeyDown);
-    }, [showSettingsPopover]);
 
     return (
         <div
@@ -337,116 +172,9 @@ const Sidebar = () => {
             {/* User section - only render when logged in */}
             {currentUser && (
                 <div className="sidebar-footer">
-                    <div className="user-section">
-                        <button
-                            ref={profileButtonRef}
-                            onClick={() => setShowProfilePopover(prev => !prev)}
-                            className="user-avatar-button"
-                            aria-label="Open user menu"
-                            aria-expanded={showProfilePopover}
-                            aria-haspopup="menu"
-                            onKeyDown={(e) => handleKeyDown(e, () => setShowProfilePopover(prev => !prev))}
-                        >
-                            <div className="user-avatar" title={currentUser.username}>
-                                {getAvatarInitials(currentUser.username)}
-                            </div>
-                            <div className="user-details">
-                                <p className="user-name">{currentUser.username}</p>
-                                <p className="user-role">Administrator</p>
-                            </div>
-                            <MdKeyboardArrowDown 
-                                size={16} 
-                                className={`profile-arrow ${showProfilePopover ? 'rotated' : ''}`}
-                            />
-                        </button>
-                        
-                        <button 
-                            ref={settingsButtonRef}
-                            className="settings-icon"
-                            onClick={handleSettingsClick}
-                            onKeyDown={handleSettingsKeyDown}
-                            aria-label="Open settings"
-                            aria-expanded={showSettingsPopover}
-                            aria-haspopup="menu"
-                        >
-                            <MdSettings size={16} />
-                        </button>
-                        
-                        {/* Enhanced Profile Popover with proper functionality */}
-                        {showProfilePopover && (
-                            <div 
-                                className="profile-popover active" 
-                                role="menu" 
-                                aria-label="User menu"
-                            >
-                                <button
-                                    className="profile-popover-item"
-                                    role="menuitem"
-                                    onClick={handleProfileClick}
-                                    onKeyDown={(e) => handleKeyDown(e, handleProfileClick)}
-                                >
-                                    <MdPerson size={16} />
-                                    <span>Profile</span>
-                                </button>
-                                <button
-                                    className="profile-popover-item"
-                                    role="menuitem"
-                                    onClick={handleNotificationsClick}
-                                    onKeyDown={(e) => handleKeyDown(e, handleNotificationsClick)}
-                                >
-                                    <MdNotifications size={16} />
-                                    <span>Notifications</span>
-                                </button>
-                            </div>
-                        )}
-
-                        {/* Real Settings Popover */}
-                        {showSettingsPopover && (
-                            <div 
-                                ref={settingsPopoverRef}
-                                className="settings-popover active"
-                                role="menu" 
-                                aria-label="Sidebar settings"
-                            >
-                                <div className="settings-header">
-                                    <h4>Sidebar Settings</h4>
-                                </div>
-                                
-                                <div className="settings-item">
-                                    <label className="settings-label">
-                                        <input
-                                            type="checkbox"
-                                            checked={sidebarSettings.autoCollapse}
-                                            onChange={(e) => handleSettingChange('autoCollapse', e.target.checked)}
-                                            className="settings-checkbox"
-                                        />
-                                        Auto-collapse when inactive
-                                    </label>
-                                </div>
-
-                                <div className="settings-item">
-                                    <label className="settings-label">
-                                        <input
-                                            type="checkbox"
-                                            checked={isCollapsed}
-                                            onChange={(e) => {
-                                                handleCollapseToggle();
-                                                if (settingsButtonRef.current) {
-                                                    settingsButtonRef.current.focus();
-                                                }
-                                            }}
-                                            className="settings-checkbox"
-                                        />
-                                        Collapse sidebar
-                                    </label>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                    
                     {/* Enhanced Logout Button */}
-                    <button 
-                        onClick={handleLogout} 
+                    <button
+                        onClick={handleLogout}
                         className="logout-button"
                         aria-label="Logout from application"
                         onKeyDown={(e) => handleKeyDown(e, handleLogout)}

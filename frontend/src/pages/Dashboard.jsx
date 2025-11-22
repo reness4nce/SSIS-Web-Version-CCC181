@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import { FiUsers, FiBookOpen, FiHome, FiRefreshCw } from 'react-icons/fi';
 
 /* ------------ Data sanitizers ------------- */
@@ -664,49 +665,6 @@ const PieChartWithLegend = React.memo(({ data }) => {
           );
         })}
       </div>
-
-      {/* Summary */}
-      <div
-        style={{
-          padding: '14px 18px',
-          borderRadius: 12,
-          backgroundColor: '#F8FAFC',
-          border: '1px solid #E2E8F0',
-          textAlign: 'center',
-        }}
-      >
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 600,
-            color: '#0F172A',
-            marginBottom: 2,
-          }}
-        >
-          {total.toLocaleString()} Students
-        </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: '#6B7280',
-          }}
-        >
-          Across{' '}
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: 999,
-              backgroundColor: '#E5EDFF',
-              color: '#1D4ED8',
-              fontWeight: 600,
-              margin: '0 4px',
-            }}
-          >
-            {data.length}
-          </span>
-          College{data.length !== 1 ? 's' : ''}
-        </div>
-      </div>
     </div>
   );
 });
@@ -714,6 +672,7 @@ const PieChartWithLegend = React.memo(({ data }) => {
 /* ------------ Main Dashboard ---------------- */
 
 const Dashboard = () => {
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 768px)');
 const { stats, chartData, loading, statsError, chartsError } =
@@ -761,7 +720,7 @@ const hasError = Boolean(statsError || chartsError);
               margin: '0 0 4px 0',
             }}
           >
-            Dashboard
+           Welcome, {currentUser.username}!
           </h1>
           <p
             style={{
@@ -770,7 +729,7 @@ const hasError = Boolean(statsError || chartsError);
               margin: 0,
             }}
           >
-            Welcome to InsTrack - Student Information System Overview
+           InsTrack - Student Information System Overview
           </p>
         </div>
 
