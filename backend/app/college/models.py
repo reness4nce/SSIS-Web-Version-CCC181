@@ -34,11 +34,8 @@ class College:
     @staticmethod
     def create_college(code, name):
         """Create a new college"""
-        college_data = {
-            'code': code,
-            'name': name
-        }
-        return insert_record("college", college_data, returning="*")
+        query = "INSERT INTO college (code, name) VALUES (%s, %s) RETURNING *"
+        return execute_raw_sql(query, params=[code, name], fetch=True)
 
     @staticmethod
     def update_college(college_id=None, college_code=None, name=None, new_code=None):

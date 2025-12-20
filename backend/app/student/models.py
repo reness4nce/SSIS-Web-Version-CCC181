@@ -152,18 +152,9 @@ class Student:
     def create_student(student_id, firstname, lastname, course, year, gender, profile_photo_url=None, profile_photo_filename=None):
         """Create new student"""
         try:
-            student_data = {
-                'id': student_id.upper(),
-                'firstname': firstname,
-                'lastname': lastname,
-                'course': course,
-                'year': year,
-                'gender': gender,
-                'profile_photo_url': profile_photo_url,
-                'profile_photo_filename': profile_photo_filename,
-                'profile_photo_updated_at': datetime.utcnow().isoformat() if profile_photo_url else None
-            }
-            result = insert_record("student", student_data, returning="*")
+            profile_photo_updated_at = datetime.utcnow().isoformat() if profile_photo_url else None
+            query = "INSERT INTO student (id, firstname, lastname, course, year, gender, profile_photo_url, profile_photo_filename, profile_photo_updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *"
+            result = execute_raw_sql(query, params=[student_id.upper(), firstname, lastname, course, year, gender, profile_photo_url, profile_photo_filename, profile_photo_updated_at], fetch=True)
             logger.info(f"Student created: {student_id}")
             return result
         except Exception as e:

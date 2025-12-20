@@ -38,12 +38,8 @@ class Program:
     @staticmethod
     def create_program(code, name, college):
         """Create a new program"""
-        program_data = {
-            'code': code,
-            'name': name,
-            'college': college
-        }
-        return insert_record("program", program_data, returning="*")
+        query = "INSERT INTO program (code, name, college) VALUES (%s, %s, %s) RETURNING *"
+        return execute_raw_sql(query, params=[code, name, college], fetch=True)
 
     @staticmethod
     def update_program(program_code, name=None, college=None, code=None):

@@ -34,8 +34,8 @@ class User:
     @staticmethod
     def create_user(username, email, password):
         password_hash = generate_password_hash(password)
-        user_data = {'username': username, 'email': email, 'password_hash': password_hash}
-        return insert_record("users", user_data, returning="*")
+        query = "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING *"
+        return execute_raw_sql(query, params=[username, email, password_hash], fetch=True)
 
     @staticmethod
     def update_user(user_id, username=None, email=None, password=None):
