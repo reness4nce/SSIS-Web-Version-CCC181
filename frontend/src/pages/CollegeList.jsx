@@ -282,7 +282,6 @@ const CollegeList = () => {
                         title="Edit college"
                       >
                         <FiEdit size={14} aria-hidden="true" />
-                        Edit
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
@@ -291,7 +290,6 @@ const CollegeList = () => {
                         title="Delete college"
                       >
                         <FiTrash2 size={14} aria-hidden="true" />
-                        Delete
                       </button>
                     </div>
                   </td>

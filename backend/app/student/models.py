@@ -156,7 +156,7 @@ class Student:
             query = "INSERT INTO student (id, firstname, lastname, course, year, gender, profile_photo_url, profile_photo_filename, profile_photo_updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *"
             result = execute_raw_sql(query, params=[student_id.upper(), firstname, lastname, course, year, gender, profile_photo_url, profile_photo_filename, profile_photo_updated_at], fetch=True)
             logger.info(f"Student created: {student_id}")
-            return result
+            return result[0] if result else None
         except Exception as e:
             logger.error(f"Error creating student: {e}", exc_info=True)
             raise

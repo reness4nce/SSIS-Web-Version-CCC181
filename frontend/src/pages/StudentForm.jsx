@@ -50,6 +50,12 @@ function StudentForm({ onSuccess, student, onClose }) {
   // Confirmation modal state
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
+  // Form submission loading state
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Track if photo was removed in this session
+  const [photoRemoved, setPhotoRemoved] = useState(false);
+
   // ✅ Sync current photo state with student prop changes (for page refresh persistence)
   useEffect(() => {
     if (student) {
@@ -503,8 +509,8 @@ function StudentForm({ onSuccess, student, onClose }) {
       setCurrentPhotoFilename(null);
       setImageError(false);
 
-      // Show success message
-      showSuccessToast('Photo removed successfully!');
+      // Track that photo was removed
+      setPhotoRemoved(true);
 
       // Update student data to reflect removed photo
       const updatedStudentData = {
@@ -514,7 +520,7 @@ function StudentForm({ onSuccess, student, onClose }) {
       };
 
       if (onSuccess) {
-        onSuccess(updatedStudentData, 'photo_update_no_close');
+        onSuccess(updatedStudentData, 'photo_remove_no_close');
       }
 
       console.log('✅ Photo removed and state updated for persistence');
@@ -625,38 +631,43 @@ function StudentForm({ onSuccess, student, onClose }) {
     e.preventDefault();
     setErrorMessage("");
     setFieldErrors({});
-
-    // Enhanced client-side validation
-    const validationErrors = validateForm();
-    if (Object.keys(validationErrors).length > 0) {
-      setFieldErrors(validationErrors);
-      return;
-    }
-
-    // Additional check: if editing and ID changed, ensure no duplicate ID error exists
-    if (isEdit && student && formData.id !== student.id && fieldErrors.id) {
-      console.log(`❌ Form submission blocked: ID validation error exists for ${formData.id}`);
-      showErrorToast("Please fix the Student ID error before submitting.");
-      return;
-    } else if (isEdit && student && formData.id !== student.id) {
-      console.log(`✅ Form submission allowed: No ID validation errors for ${formData.id}`);
-    }
+    setIsSubmitting(true);
 
     try {
+      // Enhanced client-side validation
+      const validationErrors = validateForm();
+      if (Object.keys(validationErrors).length > 0) {
+        setFieldErrors(validationErrors);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Additional check: if editing and ID changed, ensure no duplicate ID error exists
+      if (isEdit && student && formData.id !== student.id && fieldErrors.id) {
+        console.log(`❌ Form submission blocked: ID validation error exists for ${formData.id}`);
+        showErrorToast("Please fix the Student ID error before submitting.");
+        setIsSubmitting(false);
+        return;
+      } else if (isEdit && student && formData.id !== student.id) {
+        console.log(`✅ Form submission allowed: No ID validation errors for ${formData.id}`);
+      }
+
       let response;
       if (isEdit) {
         // Use original student ID in URL, updated data in body
         // Include photo if selected during editing
         response = await api.updateStudent(student.id, formData, selectedPhoto, originalPhotoFilename);
+        showSuccessToast("Student updated successfully!");
       } else {
         // NEW: For creating students, include photo if available
         response = await api.createStudent(formData, selectedPhoto, originalPhotoFilename);
+        showSuccessToast("Student created successfully!");
       }
 
       // Pass the updated/created student data and operation type to the callback for in-place updates
       if (onSuccess) {
         const studentData = response.data.student;
-        onSuccess(studentData, operation, selectedPhoto ? true : false);
+        onSuccess(studentData, operation, selectedPhoto ? true : false, photoRemoved);
 
         // Clear photo state after successful creation (only for new students)
         if (!isEdit) {
@@ -734,6 +745,8 @@ function StudentForm({ onSuccess, student, onClose }) {
       } else {
         setErrorMessage("Failed to save student. Please check your input and try again.");
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -806,126 +819,138 @@ function StudentForm({ onSuccess, student, onClose }) {
         )}
       </div>
 
-      <div className="form-group">
-        <label htmlFor="student-firstname" className="form-label">
-          First Name
-        </label>
-        <input
-          id="student-firstname"
-          name="firstname"
-          className="form-control"
-          placeholder="Enter first name"
-          value={formData.firstname}
-          onChange={handleChange}
-          required
-          aria-describedby={fieldErrors.firstname ? "firstname-error" : undefined}
-        />
-        {fieldErrors.firstname && (
-          <span id="firstname-error" className="modal-field-error" role="alert">
-            {fieldErrors.firstname}
-          </span>
-        )}
-      </div>
+      <div className="field-group">
+        <span className="field-group-label">Personal Information</span>
 
-      <div className="form-group">
-        <label htmlFor="student-lastname" className="form-label">
-          Last Name
-        </label>
-        <input
-          id="student-lastname"
-          name="lastname"
-          className="form-control"
-          placeholder="Enter last name"
-          value={formData.lastname}
-          onChange={handleChange}
-          required
-          aria-describedby={fieldErrors.lastname ? "lastname-error" : undefined}
-        />
-        {fieldErrors.lastname && (
-          <span id="lastname-error" className="modal-field-error" role="alert">
-            {fieldErrors.lastname}
-          </span>
-        )}
-      </div>
+        <div className="field-row">
+          <div className="form-group">
+            <label htmlFor="student-firstname" className="form-label">
+              First Name
+            </label>
+            <input
+              id="student-firstname"
+              name="firstname"
+              className="form-control"
+              placeholder="Enter first name"
+              value={formData.firstname}
+              onChange={handleChange}
+              required
+              aria-describedby={fieldErrors.firstname ? "firstname-error" : undefined}
+            />
+            {fieldErrors.firstname && (
+              <span id="firstname-error" className="modal-field-error" role="alert">
+                {fieldErrors.firstname}
+              </span>
+            )}
+          </div>
 
-      <div className="form-group">
-        <label htmlFor="student-program" className="form-label">
-          Program
-        </label>
-        <div className="select-wrapper">
-          <select
-            id="student-program"
-            name="course"
-            className="form-control"
-            value={formData.course}
-            onChange={handleChange}
-            required
-            aria-describedby={fieldErrors.course ? "course-error" : undefined}
-          >
-            <option value="">Select a program</option>
-            {programs.map((program) => (
-              <option key={program.code} value={program.code}>
-                {program.name}
-              </option>
-            ))}
-          </select>
+          <div className="form-group">
+            <label htmlFor="student-lastname" className="form-label">
+              Last Name
+            </label>
+            <input
+              id="student-lastname"
+              name="lastname"
+              className="form-control"
+              placeholder="Enter last name"
+              value={formData.lastname}
+              onChange={handleChange}
+              required
+              aria-describedby={fieldErrors.lastname ? "lastname-error" : undefined}
+            />
+            {fieldErrors.lastname && (
+              <span id="lastname-error" className="modal-field-error" role="alert">
+                {fieldErrors.lastname}
+              </span>
+            )}
+          </div>
         </div>
-        {fieldErrors.course && (
-          <span id="course-error" className="modal-field-error" role="alert">
-            {fieldErrors.course}
-          </span>
-        )}
       </div>
 
-      <div className="form-group">
-        <label htmlFor="student-year" className="form-label">
-          Year Level
-        </label>
-        <input
-          id="student-year"
-          name="year"
-          type="number"
-          className="form-control"
-          placeholder="1-4"
-          min="1"
-          max="4"
-          value={formData.year}
-          onChange={handleChange}
-          required
-          aria-describedby={fieldErrors.year ? "year-error" : undefined}
-        />
-        {fieldErrors.year && (
-          <span id="year-error" className="modal-field-error" role="alert">
-            {fieldErrors.year}
-          </span>
-        )}
-      </div>
+      <div className="field-group">
+        <span className="field-group-label">Academic Information</span>
 
-      <div className="form-group">
-        <label htmlFor="student-gender" className="form-label">
-          Gender
-        </label>
-        <div className="select-wrapper">
-          <select
-            id="student-gender"
-            name="gender"
-            className="form-control"
-            value={formData.gender}
-            onChange={handleChange}
-            required
-            aria-describedby={fieldErrors.gender ? "gender-error" : undefined}
-          >
-            <option value="">Select Gender</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Other">Other</option>
-          </select>
+        <div className="form-group">
+          <label htmlFor="student-program" className="form-label">
+            Program
+          </label>
+          <div className="select-wrapper">
+            <select
+              id="student-program"
+              name="course"
+              className="form-control"
+              value={formData.course}
+              onChange={handleChange}
+              required
+              aria-describedby={fieldErrors.course ? "course-error" : undefined}
+            >
+              <option value="">Select a program</option>
+              {programs.map((program) => (
+                <option key={program.code} value={program.code}>
+                  {program.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {fieldErrors.course && (
+            <span id="course-error" className="modal-field-error" role="alert">
+              {fieldErrors.course}
+            </span>
+          )}
         </div>
-        {fieldErrors.gender && (
-          <span id="gender-error" className="modal-field-error" role="alert">
-            {fieldErrors.gender}
-          </span>
-        )}
+
+        <div className="field-row">
+          <div className="form-group">
+            <label htmlFor="student-year" className="form-label">
+              Year Level
+            </label>
+            <input
+              id="student-year"
+              name="year"
+              type="number"
+              className="form-control"
+              placeholder="1-6"
+              min="1"
+              max="6"
+              value={formData.year}
+              onChange={handleChange}
+              required
+              aria-describedby={fieldErrors.year ? "year-error" : undefined}
+            />
+            {fieldErrors.year && (
+              <span id="year-error" className="modal-field-error" role="alert">
+                {fieldErrors.year}
+              </span>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="student-gender" className="form-label">
+              Gender
+            </label>
+            <div className="select-wrapper">
+              <select
+                id="student-gender"
+                name="gender"
+                className="form-control"
+                value={formData.gender}
+                onChange={handleChange}
+                required
+                aria-describedby={fieldErrors.gender ? "gender-error" : undefined}
+              >
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            {fieldErrors.gender && (
+              <span id="gender-error" className="modal-field-error" role="alert">
+                {fieldErrors.gender}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Enhanced Photo Upload Section with CurrentPhotoDisplay */}
@@ -1307,9 +1332,24 @@ function StudentForm({ onSuccess, student, onClose }) {
           type="submit"
           className="modal-btn modal-btn-primary"
           disabled={!formData.id?.trim() || !formData.firstname?.trim() || !formData.lastname?.trim() ||
-                   !formData.year || !formData.gender || isUploadingPhoto}
+                   !formData.year || !formData.gender || isUploadingPhoto || isSubmitting}
         >
-          {isEdit ? "Update Student" : "Add Student"}
+          {isSubmitting ? (
+            <>
+              <div style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid transparent',
+                borderTop: '2px solid currentColor',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+                marginRight: '8px'
+              }}></div>
+              {isEdit ? "Updating..." : "Creating..."}
+            </>
+          ) : (
+            isEdit ? "Update Student" : "Add Student"
+          )}
         </button>
       </div>
 

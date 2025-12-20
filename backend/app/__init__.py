@@ -196,20 +196,20 @@ def create_app(config=None):
         """Reset database (drop and recreate all tables)"""
         try:
             app.logger.warning("Resetting database - all data will be lost!")
-            from .supabase import execute_raw_sql
-            
+            from .database import execute_raw_sql
+
             # Drop tables in reverse order
             execute_raw_sql("DROP TABLE IF EXISTS student CASCADE", commit=True)
             execute_raw_sql("DROP TABLE IF EXISTS program CASCADE", commit=True)
             execute_raw_sql("DROP TABLE IF EXISTS college CASCADE", commit=True)
             execute_raw_sql("DROP TABLE IF EXISTS users CASCADE", commit=True)
-            
+
             # Recreate tables
             User.create_table()
             College.create_table()
             Program.create_table()
             Student.create_table()
-            
+
             print("✅ Database reset successfully!")
             app.logger.info("Database reset completed")
         except Exception as e:

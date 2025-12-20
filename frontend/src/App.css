@@ -383,9 +383,9 @@ td {
 /* Action buttons container */
 .action-buttons {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    align-items: flex-start;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
 }
 
 /* Text truncation for long content */

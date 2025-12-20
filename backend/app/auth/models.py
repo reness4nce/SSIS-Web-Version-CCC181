@@ -7,12 +7,11 @@ class User:
     @staticmethod
     def create_table():
         query = """
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE IF NOT EXISTS "user" (
             id SERIAL PRIMARY KEY,
             username VARCHAR(80) UNIQUE NOT NULL,
             email VARCHAR(120) UNIQUE NOT NULL,
-            password_hash VARCHAR(256) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            password_hash VARCHAR(256) NOT NULL
         )
         """
         execute_raw_sql(query, commit=True)
@@ -20,21 +19,21 @@ class User:
     @staticmethod
     def get_by_username(username):
         # Get user by username
-        return get_one("users", where_clause="username = %s", params=[username])
+        return get_one('"user"', where_clause="username = %s", params=[username])
 
     @staticmethod
     def get_by_email(email):
         # Get user by email
-        return get_one("users", where_clause="email = %s", params=[email])
+        return get_one('"user"', where_clause="email = %s", params=[email])
 
     @staticmethod
     def get_by_id(user_id):
-        return get_one("users", where_clause="id = %s", params=[user_id])
+        return get_one('"user"', where_clause="id = %s", params=[user_id])
 
     @staticmethod
     def create_user(username, email, password):
         password_hash = generate_password_hash(password)
-        query = "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING *"
+        query = 'INSERT INTO "user" (username, email, password_hash) VALUES (%s, %s, %s) RETURNING *'
         return execute_raw_sql(query, params=[username, email, password_hash], fetch=True)
 
     @staticmethod
@@ -48,11 +47,11 @@ class User:
             update_data['password_hash'] = generate_password_hash(password)
         if not update_data:
             return None
-        return update_record("users", update_data, "id = %s", params={**update_data, 'id': user_id})
+        return update_record('"user"', update_data, "id = %s", params={**update_data, 'id': user_id})
 
     @staticmethod
     def delete_user(user_id):
-        return delete_record("users", "id = %s", params=[user_id])
+        return delete_record('"user"', "id = %s", params=[user_id])
 
     @staticmethod
     def verify_password(password_hash, password):

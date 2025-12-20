@@ -149,13 +149,7 @@
     transform: translateY(-50%) translateX(8px);
 }
 
-/* Show text on hover/focus in collapsed state */
-.sidebar.collapsed .nav-link:hover .nav-text,
-.sidebar.collapsed .nav-link:focus .nav-text {
-    opacity: 1;
-    visibility: visible;
-    transform: translateX(0);
-}
+
 
 /* Enhanced Header Section with higher contrast */
 .sidebar-header {

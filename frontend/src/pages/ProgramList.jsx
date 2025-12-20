@@ -270,7 +270,6 @@ const ProgramList = () => {
                         title="Edit program"
                       >
                         <FiEdit size={14} aria-hidden="true" />
-                        Edit
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
@@ -279,7 +278,6 @@ const ProgramList = () => {
                         title="Delete program"
                       >
                         <FiTrash2 size={14} aria-hidden="true" />
-                        Delete
                       </button>
                     </div>
                   </td>

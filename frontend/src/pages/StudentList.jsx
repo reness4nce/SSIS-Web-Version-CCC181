@@ -137,7 +137,7 @@ const StudentList = () => {
     }
   };
 
-  const handleFormSuccess = (studentData, operation, hasPhoto = false) => {
+  const handleFormSuccess = (studentData, operation, hasPhoto = false, photoRemoved = false) => {
     if (operation === 'update' && studentData && originalEditingId) {
       setStudents((prev) =>
         prev.map((student) =>
@@ -196,7 +196,7 @@ const StudentList = () => {
 
     // Show success message after modal closes
     if (operation === 'create' || operation === 'update') {
-      setJustSubmittedForm({ operation, hasPhoto });
+      setJustSubmittedForm({ operation, hasPhoto, photoRemoved });
     }
 
     closeModal();
@@ -235,8 +235,10 @@ const StudentList = () => {
     }
 
     if (justSubmittedForm) {
-      const { operation, hasPhoto } = justSubmittedForm;
-      const photoMessage = hasPhoto ? " with photo" : "";
+      const { operation, hasPhoto, photoRemoved } = justSubmittedForm;
+      const photoMessage = operation === 'create'
+        ? (hasPhoto ? " with photo" : "")
+        : (hasPhoto ? " with photo" : photoRemoved ? ", photo removed" : "");
       const message = operation === 'create'
         ? `Student created successfully${photoMessage}!`
         : `Student updated successfully${photoMessage}!`;
@@ -391,14 +393,14 @@ const StudentList = () => {
                         onClick={() => openEditModal(student)}
                         aria-label={`Edit ${student.firstname} ${student.lastname}`}
                       >
-                        <FiEdit size={14} aria-hidden="true" /> Edit
+                        <FiEdit size={14} aria-hidden="true" />
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
                         onClick={() => handleDelete(student)}
                         aria-label={`Delete ${student.firstname} ${student.lastname}`}
                       >
-                        <FiTrash2 size={14} aria-hidden="true" /> Delete
+                        <FiTrash2 size={14} aria-hidden="true" />
                       </button>
                     </div>
                   </td>

@@ -1,32 +1,33 @@
-/* Clean, minimal modal overlay with subtle blur */
+/* Clean, modern modal overlay with semi-transparent background */
 .modal-overlay {
   position: fixed;
   inset: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 1000;
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: 16px;
 }
 
-/* Clean, minimal modal container */
+/* Clean, modern modal container with depth and rounded corners */
 .modal-content {
   background: white;
-  padding: 0;
-  border-radius: 8px;
+  border-radius: 12px;
   max-width: 600px;
   width: 90vw;
-  max-height: 90vh;
-  overflow: hidden;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1),
-              0 4px 10px rgba(0, 0, 0, 0.05);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15),
+              0 8px 16px rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
   animation: modalSlideIn 0.25s ease-out;
-  margin: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 @media (max-width: 768px) {
@@ -103,16 +104,19 @@
   }
 }
 
-/* Clean, minimal header with generous side padding */
+/* Sticky header with clean styling */
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f9fafb;
+  background: #ffffff;
   color: #374151;
   padding: 24px 40px;
   border-bottom: 1px solid #e5e7eb;
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .modal-header h2 {
@@ -140,12 +144,13 @@
   color: #374151;
 }
 
-/* Clean body with generous side padding */
+/* Clean body with 8px spacing system and flexible layout */
 .modal-body {
   padding: 32px 40px;
   background: white;
-  max-height: calc(90vh - 140px);
+  flex: 1;
   overflow-y: auto;
+  min-height: 0; /* Allow flex shrinking */
 }
 
 /* Simple scrollbar */
@@ -166,24 +171,74 @@
   background: #9ca3af;
 }
 
-/* Clean footer with generous side padding */
+/* Sticky footer with clean styling */
 .modal-footer {
   padding: 24px 40px;
-  background: white;
+  background: #ffffff;
   border-top: 1px solid #e5e7eb;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
 }
 
-/* Clean form styling */
+/* Clean form styling with 8px spacing system */
 .modal-form {
   margin: 0;
   color: #1f2937;
 }
 
+/* Grid system for side-by-side fields */
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+/* Responsive: stack fields on tablets and mobile */
+@media (max-width: 768px) {
+  .field-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+/* Enhanced field groups with better visual separation */
+.field-group {
+  margin-bottom: 32px;
+  padding: 24px;
+  background: #fafbfc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.field-group:last-child {
+  margin-bottom: 0;
+}
+
+.field-group-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 16px;
+  display: block;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 8px;
+}
+
+
+
 .modal-form .form-group {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
+}
+
+.modal-form .form-group:last-child {
+  margin-bottom: 0;
 }
 
 .modal-form .form-label {
@@ -289,18 +344,24 @@
 }
 
 .modal-btn-primary {
-  background: #10b981;
+  background: #059669;
   color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+  font-weight: 600;
+  border: 2px solid #059669;
 }
 
 .modal-btn-primary:hover:not(:disabled) {
-  background: #059669;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  background: #047857;
+  border-color: #047857;
+  box-shadow: 0 4px 12px rgba(4, 120, 87, 0.4);
+  transform: translateY(-1px);
 }
 
 .modal-btn-primary:active:not(:disabled) {
-  background: #047857;
+  background: #065f46;
+  border-color: #065f46;
+  transform: translateY(0);
 }
 
 .modal-btn-secondary {
