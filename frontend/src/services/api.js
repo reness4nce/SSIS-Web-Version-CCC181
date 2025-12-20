@@ -247,6 +247,7 @@ const api = {
   deleteStudentPhoto(studentId) {
     return apiClient.delete(`/students/${studentId}/photo`);
   },
+  getStudentFilters() { return apiClient.get("/students/filters"); },
 };
 
 export default api;

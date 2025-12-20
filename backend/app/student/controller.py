@@ -108,19 +108,23 @@ def get_students():
         order = request.args.get("order", "asc", type=str)
         course_filter = request.args.get("course", "", type=str)
         year_filter = request.args.get("year", "", type=str)
+        gender_filter = request.args.get("gender", "", type=str)
 
-        logger.debug(f"Get students: page={page}, search='{search}', filter={filter_field}")
+        logger.debug(f"Get students: page={page}, search='{search}', filter={filter_field}, course={course_filter}, year={year_filter}, gender={gender_filter}")
 
         # Get all students first
         students = Student.get_all_students()
 
-        # Filter by course and year first
+        # Filter by course, year, and gender first
         if course_filter:
             students = [s for s in students if s.get('course') and s['course'].upper() == course_filter.upper()]
 
         if year_filter:
             year = int(year_filter)
             students = [s for s in students if s.get('year') == year]
+
+        if gender_filter:
+            students = [s for s in students if s.get('gender') and s['gender'].lower() == gender_filter.lower()]
 
         # Apply search filter (case-insensitive)
         if search:
@@ -715,6 +719,31 @@ def get_student_stats():
     except Exception as e:
         logger.error(f"Error getting stats: {e}", exc_info=True)
         return jsonify({"error": "Failed to fetch statistics"}), 500
+
+
+@student_bp.route("/filters", methods=["GET"])
+@require_auth
+def get_filter_options():
+    """Get filter options for frontend (genders, years, programs)"""
+    try:
+        # Get distinct values from student data
+        students = Student.get_all_students()
+        genders = sorted(set(s.get('gender').title() for s in students if s.get('gender'))) if students else []
+        years = sorted(set(s.get('year') for s in students if s.get('year') is not None)) if students else []
+
+        # Get all valid programs from program table
+        valid_programs = get_valid_programs()
+        programs = [{'code': p['code'], 'name': p.get('name', p['code'])} for p in valid_programs.values()]
+
+        return jsonify({
+            "genders": genders,
+            "years": years,
+            "programs": programs
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting filter options: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch filter options"}), 500
 
 
 # ============================================

@@ -21,6 +21,19 @@ const FILTER_OPTIONS = [
   { value: 'course', label: 'Search by Course' }
 ];
 
+const GENDER_OPTIONS = [
+  { value: '', label: 'All Genders' },
+  // Will be populated from API
+];
+const PROGRAM_OPTIONS = [
+  { value: '', label: 'All Programs' },
+  // Will be populated from API
+];
+const YEAR_OPTIONS = [
+  { value: '', label: 'All Years' },
+  // Will be populated from API
+];
+
 const SORTABLE_COLUMNS = [
   { key: 'id', label: 'ID' },
   { key: 'firstname', label: 'First Name' },
@@ -34,6 +47,7 @@ const StudentList = () => {
   // State management
   const [students, setStudents] = useState([]);
   const [searchParams, setSearchParams] = useState({ search: '', filter: 'all' });
+  const [filterParams, setFilterParams] = useState({ gender: '', program: '', year: '' });
   const [sortParams, setSortParams] = useState({ sort: 'id', order: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -43,12 +57,20 @@ const StudentList = () => {
   const [originalEditingId, setOriginalEditingId] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [justUploadedPhoto, setJustUploadedPhoto] = useState(false);
+  const [filterOptions, setFilterOptions] = useState({ genders: [], programs: [], years: [] });
+
+  // Modal state for filters
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [pendingFilters, setPendingFilters] = useState({ gender: '', program: '', year: '' });
   const [justRemovedPhoto, setJustRemovedPhoto] = useState(false);
   const [justSubmittedForm, setJustSubmittedForm] = useState(null); // { operation, hasPhoto }
 
-  // Debounced search for performance
+  // Debounced search and filters for performance
   const [debouncedSearch] = useDebounce(searchParams.search, DEBOUNCE_DELAY);
   const [debouncedFilter] = useDebounce(searchParams.filter, DEBOUNCE_DELAY);
+  const [debouncedGender] = useDebounce(filterParams.gender, DEBOUNCE_DELAY);
+  const [debouncedProgram] = useDebounce(filterParams.program, DEBOUNCE_DELAY);
+  const [debouncedYear] = useDebounce(filterParams.year, DEBOUNCE_DELAY);
 
   // Ref to track if component is mounted
   const isMountedRef = useRef(true);
@@ -59,6 +81,19 @@ const StudentList = () => {
     };
   }, []);
 
+  // Load filter options on component mount
+  useEffect(() => {
+    const loadFilterOptions = async () => {
+      try {
+        const response = await api.getStudentFilters();
+        setFilterOptions(response.data);
+      } catch (error) {
+        console.error('Error loading filter options:', error);
+      }
+    };
+    loadFilterOptions();
+  }, []);
+
   // Fetch students smoothly
   const fetchStudents = useCallback(async () => {
     try {
@@ -67,6 +102,9 @@ const StudentList = () => {
         per_page: ITEMS_PER_PAGE,
         search: debouncedSearch,
         filter: debouncedFilter,
+        gender: debouncedGender,
+        course: debouncedProgram,
+        year: debouncedYear,
         sort: sortParams.sort,
         order: sortParams.order,
       });
@@ -83,7 +121,7 @@ const StudentList = () => {
         setStudents([]);
       }
     }
-  }, [currentPage, debouncedSearch, debouncedFilter, sortParams]);
+  }, [currentPage, debouncedSearch, debouncedFilter, debouncedGender, debouncedProgram, debouncedYear, sortParams]);
 
   useEffect(() => {
     fetchStudents();
@@ -97,8 +135,16 @@ const StudentList = () => {
     setHasSearched(true);
   };
 
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilterParams((prev) => ({ ...prev, [name]: value }));
+    setCurrentPage(1);
+    setHasSearched(true);
+  };
+
   const handleClearSearch = () => {
     setSearchParams({ search: '', filter: 'all' });
+    setFilterParams({ gender: '', program: '', year: '' });
     setHasSearched(false);
     setCurrentPage(1);
   };
@@ -203,6 +249,37 @@ const StudentList = () => {
   };
 
   // Modal handlers
+  // Filter modal handlers
+  const openFilterModal = () => {
+    setPendingFilters(filterParams); // Copy current filters to pending
+    setIsFilterModalOpen(true);
+  };
+
+  const closeFilterModal = () => {
+    setIsFilterModalOpen(false);
+  };
+
+  const handlePendingFilterChange = (e) => {
+    const { name, value } = e.target;
+    setPendingFilters((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const applyFilters = () => {
+    setFilterParams(pendingFilters);
+    setCurrentPage(1);
+    setHasSearched(true);
+    setIsFilterModalOpen(false);
+  };
+
+  const clearFilters = () => {
+    const clearState = { gender: '', program: '', year: '' };
+    setFilterParams(clearState);
+    setPendingFilters(clearState);
+    setCurrentPage(1);
+    setHasSearched(true);
+    setIsFilterModalOpen(false);
+  };
+
   const openAddModal = () => {
     setEditingStudent(null);
     setOriginalEditingId(null);
@@ -268,8 +345,8 @@ const StudentList = () => {
   });
 
   const renderEmptyState = () => {
-    const hasActiveSearch = searchParams.search || searchParams.filter !== 'all';
-    
+    const hasActiveSearch = searchParams.search || searchParams.filter !== 'all' || filterParams.gender || filterParams.program || filterParams.year;
+
     return (
       <tr>
         <td colSpan="8" className="empty-state">
@@ -278,14 +355,12 @@ const StudentList = () => {
           </div>
           <div className="empty-state-text">
             {hasSearched && hasActiveSearch
-              ? `No students found matching "${searchParams.search}" in ${
-                  searchParams.filter === 'all' ? 'all fields' : searchParams.filter
-                }.`
+              ? `No students found matching your search and filter criteria.`
               : 'No students found. Add your first student to get started!'}
           </div>
           {hasSearched && hasActiveSearch && (
             <button className="btn btn-primary mt-3" onClick={handleClearSearch}>
-              Clear Search
+              Clear Search & Filters
             </button>
           )}
         </td>
@@ -337,6 +412,11 @@ const StudentList = () => {
               </div>
             </div>
           </div>
+
+          {/* Filters Button */}
+          <button className="btn btn-secondary" onClick={openFilterModal} style={{ padding: '8px 16px' }}>
+            Filters
+          </button>
 
           {/* Add Button */}
           <button className="btn add-btn" onClick={openAddModal}>
@@ -434,6 +514,94 @@ const StudentList = () => {
           student={editingStudent}
           onClose={closeModal}
         />
+      </Modal>
+
+      {/* Filter Modal */}
+      <Modal
+        isOpen={isFilterModalOpen}
+        onClose={closeFilterModal}
+        title="Filter Students"
+      >
+        <div style={{ padding: '20px' }}>
+          {/* Filter controls */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Gender Filter */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Gender</label>
+              <div className="filter-dropdown" style={{ minWidth: '200px' }}>
+                <select
+                  name="gender"
+                  value={pendingFilters.gender}
+                  onChange={handlePendingFilterChange}
+                  className="form-control"
+                  aria-label="Filter by gender"
+                >
+                  <option value="">All Genders</option>
+                  {filterOptions.genders.map((gender) => (
+                    <option key={gender} value={gender}>
+                      {gender}
+                    </option>
+                  ))}
+                </select>
+                <FiChevronDown className="dropdown-icon" aria-hidden="true" />
+              </div>
+            </div>
+
+            {/* Program Filter */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Program</label>
+              <div className="filter-dropdown" style={{ minWidth: '200px' }}>
+                <select
+                  name="program"
+                  value={pendingFilters.program}
+                  onChange={handlePendingFilterChange}
+                  className="form-control"
+                  aria-label="Filter by program"
+                >
+                  <option value="">All Programs</option>
+                  {filterOptions.programs.map((program) => (
+                    <option key={program.code} value={program.code}>
+                      {program.name}
+                    </option>
+                  ))}
+                </select>
+                <FiChevronDown className="dropdown-icon" aria-hidden="true" />
+              </div>
+            </div>
+
+            {/* Year Filter */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Year Level</label>
+              <div className="filter-dropdown" style={{ minWidth: '200px' }}>
+                <select
+                  name="year"
+                  value={pendingFilters.year}
+                  onChange={handlePendingFilterChange}
+                  className="form-control"
+                  aria-label="Filter by year level"
+                >
+                  <option value="">All Years</option>
+                  {filterOptions.years.map((year) => (
+                    <option key={year} value={year}>
+                      Year {year}
+                    </option>
+                  ))}
+                </select>
+                <FiChevronDown className="dropdown-icon" aria-hidden="true" />
+              </div>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ display: 'flex', gap: '12px', marginTop: '30px', justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={clearFilters}>
+              Clear Filters
+            </button>
+            <button className="btn btn-primary" onClick={applyFilters}>
+              Apply Filters
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
