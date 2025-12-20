@@ -1,4 +1,5 @@
-from ..supabase import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records, supabase_manager
+from ..database import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records
+from ..supabase import supabase_manager
 from ..program.models import Program
 from datetime import datetime
 import logging
@@ -59,9 +60,8 @@ class Student:
     @staticmethod
     def get_all_students_filtered(where_clause=None, params=None, order_by="id", order_direction="ASC", limit=None, offset=None):
         """
-        Get filtered students with sorting (HIGH PRIORITY #3)
-        Moves filtering to database level for better performance
-        FIXED: Uses Supabase client directly to avoid order clause issues
+        Get filtered students with sorting
+        Uses raw SQL for filtering, ordering, and pagination
         """
         try:
             # Validate order_by to prevent SQL injection
@@ -75,65 +75,34 @@ class Student:
                 logger.warning(f"Invalid order direction: {order_direction}, defaulting to 'ASC'")
                 order_direction = 'ASC'
 
-            desc = order_direction.upper() == 'DESC'
-
             logger.debug(f"Fetching students: where={where_clause}, order={order_by} {order_direction}, limit={limit}, offset={offset}")
 
-            # Use Supabase client directly for proper query building
-            query = supabase_manager.get_client().table('student').select('*')
+            # Build SQL query
+            query = "SELECT * FROM student"
+            query_params = []
 
-            # Apply where clause if provided
+            # Apply where clause
             if where_clause and params:
-                # Handle ILIKE searches
-                if 'ILIKE' in where_clause.upper():
-                    search_term = params[0].replace('%', '') if params else ''
-                    
-                    if 'OR' in where_clause.upper():
-                        # Multiple field search - use .or_() filter
-                        # Extract field names from where_clause
-                        # Example: "(id ILIKE %s OR firstname ILIKE %s OR lastname ILIKE %s OR course ILIKE %s)"
-                        fields = []
-                        if 'id ILIKE' in where_clause:
-                            fields.append(f'id.ilike.%{search_term}%')
-                        if 'firstname ILIKE' in where_clause:
-                            fields.append(f'firstname.ilike.%{search_term}%')
-                        if 'lastname ILIKE' in where_clause:
-                            fields.append(f'lastname.ilike.%{search_term}%')
-                        if 'course ILIKE' in where_clause:
-                            fields.append(f'course.ilike.%{search_term}%')
-                        
-                        if fields:
-                            query = query.or_(','.join(fields))
-                    else:
-                        # Single field search
-                        # Extract field name
-                        field_match = where_clause.split()[0]
-                        query = query.ilike(field_match, f'%{search_term}%')
-                
-                elif '=' in where_clause:
-                    # Exact match filters (course, year)
-                    if 'course' in where_clause and params:
-                        query = query.eq('course', params[0])
-                    if 'year' in where_clause and params:
-                        year_param = params[-1] if len(params) > 0 else params[0]
-                        query = query.eq('year', year_param)
+                query += f" WHERE {where_clause}"
+                query_params.extend(params)
 
-            # Apply ordering (FIXED: separate column and direction)
-            query = query.order(order_by, desc=desc)
+            # Apply ordering
+            query += f" ORDER BY {order_by} {order_direction}"
 
             # Apply pagination
-            if offset is not None and limit:
-                end = offset + limit - 1
-                query = query.range(offset, end)
-            elif limit:
-                query = query.limit(limit)
+            if limit:
+                query += " LIMIT %s"
+                query_params.append(limit)
+            if offset:
+                query += " OFFSET %s"
+                query_params.append(offset)
 
             # Execute query
-            result = query.execute()
-            
-            logger.debug(f"Query returned {len(result.data) if result.data else 0} students")
-            
-            return result.data if result.data else []
+            result = execute_raw_sql(query, params=query_params, fetch=True)
+
+            logger.debug(f"Query returned {len(result) if result else 0} students")
+
+            return result if result else []
 
         except Exception as e:
             logger.error(f"Error fetching filtered students: {e}", exc_info=True)
@@ -159,42 +128,21 @@ class Student:
 
     @staticmethod
     def count_students_filtered(where_clause=None, params=None):
-        """Count students matching filter (HIGH PRIORITY #3) - FIXED"""
+        """Count students matching filter"""
         try:
-            # Use Supabase client directly for accurate counting
-            query = supabase_manager.get_client().table('student').select('*', count='exact')
+            # Build SQL query for counting
+            query = "SELECT COUNT(*) as count FROM student"
+            query_params = []
 
-            # Apply same filters as get_all_students_filtered
+            # Apply where clause
             if where_clause and params:
-                if 'ILIKE' in where_clause.upper():
-                    search_term = params[0].replace('%', '') if params else ''
-                    
-                    if 'OR' in where_clause.upper():
-                        fields = []
-                        if 'id ILIKE' in where_clause:
-                            fields.append(f'id.ilike.%{search_term}%')
-                        if 'firstname ILIKE' in where_clause:
-                            fields.append(f'firstname.ilike.%{search_term}%')
-                        if 'lastname ILIKE' in where_clause:
-                            fields.append(f'lastname.ilike.%{search_term}%')
-                        if 'course ILIKE' in where_clause:
-                            fields.append(f'course.ilike.%{search_term}%')
-                        
-                        if fields:
-                            query = query.or_(','.join(fields))
-                    else:
-                        field_match = where_clause.split()[0]
-                        query = query.ilike(field_match, f'%{search_term}%')
-                
-                elif '=' in where_clause:
-                    if 'course' in where_clause and params:
-                        query = query.eq('course', params[0])
-                    if 'year' in where_clause and params:
-                        year_param = params[-1] if len(params) > 0 else params[0]
-                        query = query.eq('year', year_param)
+                query += f" WHERE {where_clause}"
+                query_params.extend(params)
 
-            result = query.execute()
-            return result.count if hasattr(result, 'count') else len(result.data or [])
+            # Execute query
+            result = execute_raw_sql(query, params=query_params, fetch=True)
+
+            return result[0]['count'] if result else 0
 
         except Exception as e:
             logger.error(f"Error counting filtered students: {e}", exc_info=True)
@@ -339,10 +287,15 @@ class Student:
                         # Don't fail the entire operation if old photo deletion fails
 
                 # Update student record with new photo info
-                Student.update_student(
-                    student_id,
-                    profile_photo_url=public_url,
-                    profile_photo_filename=unique_filename
+                update_record(
+                    "student",
+                    {
+                        'profile_photo_url': public_url,
+                        'profile_photo_filename': unique_filename,
+                        'profile_photo_updated_at': datetime.utcnow().isoformat()
+                    },
+                    "id = %s",
+                    params=[student_id]
                 )
 
                 logger.info(f"Photo uploaded and old photo cleaned up: {unique_filename}")
@@ -370,11 +323,16 @@ class Student:
             response = bucket.remove([filename])
 
             if response:
-                # Update student record - use service role client to bypass RLS for photo clearance
-                supabase_manager.get_service_role_client().table('student').update({
-                    'profile_photo_url': None,
-                    'profile_photo_filename': None
-                }).eq('id', student_id).execute()
+                # Update student record to clear photo info
+                update_record(
+                    "student",
+                    {
+                        'profile_photo_url': None,
+                        'profile_photo_filename': None
+                    },
+                    "id = %s",
+                    params=[student_id]
+                )
 
                 logger.info(f"Photo deleted: {filename}")
                 return {'success': True}
@@ -390,24 +348,17 @@ class Student:
     def get_student_stats():
         """Get student statistics"""
         try:
-            # Try RPC function first
-            result = supabase_manager.get_client().rpc('get_student_stats').execute()
-            if result.data:
-                return {
-                    'by_year': result.data.get('by_year', []),
-                    'by_course': result.data.get('by_course', [])
-                }
-        except Exception as e:
-            logger.debug(f"RPC stats not available, using fallback: {e}")
+            # Get stats by year
+            year_query = "SELECT year, COUNT(*) as count FROM student GROUP BY year ORDER BY year"
+            year_result = execute_raw_sql(year_query, fetch=True)
 
-        # Fallback to direct queries
-        try:
-            year_stats = supabase_manager.get_client().table('student').select('year, count:id').group('year').execute()
-            course_stats = supabase_manager.get_client().table('student').select('course, count:id').group('course').execute()
+            # Get stats by course
+            course_query = "SELECT course, COUNT(*) as count FROM student WHERE course IS NOT NULL GROUP BY course ORDER BY count DESC"
+            course_result = execute_raw_sql(course_query, fetch=True)
 
             return {
-                'by_year': [{'year': s['year'], 'count': s['count']} for s in year_stats.data or []],
-                'by_course': [{'course': s['course'], 'count': s['count']} for s in course_stats.data or []]
+                'by_year': [{'year': s['year'], 'count': s['count']} for s in year_result or []],
+                'by_course': [{'course': s['course'], 'count': s['count']} for s in course_result or []]
             }
         except Exception as e:
             logger.error(f"Error getting stats: {e}", exc_info=True)

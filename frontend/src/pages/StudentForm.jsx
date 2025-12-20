@@ -449,12 +449,15 @@ function StudentForm({ onSuccess, student, onClose }) {
         setSelectedPhoto(null);
         setPhotoPreview(null);
         setUploadProgress(0);
-        
+
+        // Show success message
+        showSuccessToast('Photo uploaded successfully!');
+
         // Update the student data for immediate UI update
-        if (onSuccess) {
-          onSuccess(updatedStudentData, 'photo_update_no_close');
-        }
-        
+      if (onSuccess) {
+        onSuccess(updatedStudentData, 'photo_remove_no_close');
+      }
+
         console.log('✅ Photo uploaded and state updated for persistence');
         
       } catch (err) {
@@ -499,6 +502,9 @@ function StudentForm({ onSuccess, student, onClose }) {
       setCurrentPhotoUrl(null);
       setCurrentPhotoFilename(null);
       setImageError(false);
+
+      // Show success message
+      showSuccessToast('Photo removed successfully!');
 
       // Update student data to reflect removed photo
       const updatedStudentData = {
@@ -642,19 +648,15 @@ function StudentForm({ onSuccess, student, onClose }) {
         // Use original student ID in URL, updated data in body
         // Include photo if selected during editing
         response = await api.updateStudent(student.id, formData, selectedPhoto, originalPhotoFilename);
-        const photoIncludedMessage = selectedPhoto ? " with photo" : "";
-        showSuccessToast(`Student updated successfully${photoIncludedMessage}!`);
       } else {
         // NEW: For creating students, include photo if available
         response = await api.createStudent(formData, selectedPhoto, originalPhotoFilename);
-        const photoIncludedMessage = selectedPhoto ? " with photo" : "";
-        showSuccessToast(`Student created successfully${photoIncludedMessage}!`);
       }
 
       // Pass the updated/created student data and operation type to the callback for in-place updates
       if (onSuccess) {
         const studentData = response.data.student;
-        onSuccess(studentData, operation);
+        onSuccess(studentData, operation, selectedPhoto ? true : false);
 
         // Clear photo state after successful creation (only for new students)
         if (!isEdit) {
@@ -1305,7 +1307,7 @@ function StudentForm({ onSuccess, student, onClose }) {
           type="submit"
           className="modal-btn modal-btn-primary"
           disabled={!formData.id?.trim() || !formData.firstname?.trim() || !formData.lastname?.trim() ||
-                   !formData.course?.trim() || !formData.year || !formData.gender || isUploadingPhoto}
+                   !formData.year || !formData.gender || isUploadingPhoto}
         >
           {isEdit ? "Update Student" : "Add Student"}
         </button>

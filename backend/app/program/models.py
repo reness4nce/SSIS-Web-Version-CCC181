@@ -1,4 +1,4 @@
-from ..supabase import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records, supabase_manager
+from ..database import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records
 from ..college.models import College
 
 class Program:
@@ -83,101 +83,31 @@ class Program:
 
     @staticmethod
     def get_program_stats():
-        """Get program statistics with student counts using single optimized query"""
+        """Get program statistics with student counts"""
         try:
-            # Use optimized single query approach (no RPC needed)
-            print("Using optimized single query approach for program stats")
-
-            # Get all programs with their colleges
-            programs_query = supabase_manager.get_client().table('program').select('code, name, college')
-
-            # Join with college table to get college names
-            colleges_query = supabase_manager.get_client().table('college').select('code, name')
-
-            # Execute both queries
-            programs_result = programs_query.execute()
-            colleges_result = colleges_query.execute()
-
-            programs = programs_result.data or []
-            colleges = {c['code']: c['name'] for c in (colleges_result.data or [])}
-
-            # OPTIMIZED: Instead of N queries, get all students and count by course
-            students_result = supabase_manager.get_client().table('student').select('course').neq('course', None).execute()
-            students = students_result.data or []
-
-            # Group and count manually
-            course_counts = {}
-            for student in students:
-                course = student['course']
-                course_counts[course] = course_counts.get(course, 0) + 1
-
-            # Build final stats
-            stats = []
-            for program in programs:
-                code = program['code']
-                stats.append({
-                    'code': code,
-                    'name': program['name'],
-                    'college': program.get('college'),
-                    'college_name': colleges.get(program.get('college'), ''),
-                    'student_count': course_counts.get(code, 0)
-                })
-
-            print(f"✅ Retrieved {len(stats)} program stats efficiently")
-            return stats
-
+            # Use PostgreSQL function to get program stats
+            query = "SELECT * FROM get_program_stats()"
+            result = execute_raw_sql(query, fetch=True)
+            return result or []
         except Exception as e:
             print(f"Error getting program stats: {e}")
-            import traceback
-            traceback.print_exc()
             return []
 
     @staticmethod
     def get_programs_with_college_info():
-        """Get all programs with college information using Supabase"""
-        # Skip the view approach that renames fields and use direct approach
+        """Get all programs with college information"""
         try:
-            # Get all programs with basic fields first
-            programs_result = supabase_manager.get_client().table('program').select('code, name, college').execute()
-            programs = programs_result.data or []
-            
-            if not programs:
-                return []
-            
-            # Get unique college codes
-            college_codes = list(set(p.get('college') for p in programs if p.get('college')))
-            
-            # Get college names for better display
-            colleges_result = supabase_manager.get_client().table('college').select('code, name').in_('code', college_codes).execute()
-            college_map = {c['code']: c['name'] for c in (colleges_result.data or [])}
-            
-            # Combine data ensuring correct field names for frontend
-            combined_programs = []
-            for program in programs:
-                clean_program = {
-                    'code': program.get('code', ''),
-                    'name': program.get('name', ''),  # Ensure 'name' field, not 'program_name'
-                    'college': program.get('college', ''),
-                    'college_name': college_map.get(program.get('college'), '')
-                }
-                combined_programs.append(clean_program)
-            
-            print(f"✅ Successfully processed {len(combined_programs)} programs with correct field names")
-            return combined_programs
-            
-        except Exception as e2:
-            print(f"Error with manual approach: {e2}")
-            # Final fallback: just return basic program data with correct field names
-            try:
-                result = supabase_manager.get_client().table('program').select('code, name, college').execute()
-                programs = result.data or []
-                for program in programs:
-                    program['college_name'] = ''
-                print(f"✅ Using final fallback: returning {len(programs)} programs with correct field structure")
-                return programs
-            except Exception as e3:
-                print(f"Error with final fallback: {e3}")
-                return []
+            # Use JOIN query to get programs with college info
+            query = """
+                SELECT p.code, p.name, p.college, c.name as college_name
+                FROM program p
+                LEFT JOIN college c ON p.college = c.code
+            """
+            result = execute_raw_sql(query, fetch=True)
+            return result or []
+        except Exception as e:
+            print(f"Error getting programs with college info: {e}")
+            return []
 
     def __init__(self, code, name, college):
         """Initialize Program object"""

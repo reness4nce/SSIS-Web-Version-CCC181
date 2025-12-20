@@ -1,4 +1,4 @@
-from ..supabase import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records, supabase_manager
+from ..database import get_one, get_all, insert_record, update_record, delete_record, execute_raw_sql, count_records
 
 class College:
     """College model using Supabase operations"""
@@ -61,7 +61,7 @@ class College:
             params = [college_id]  # FIXED: Use list for WHERE clause parameter
         else:
             where_clause = "code = %s"
-            params = [college_code]  # FIXED: Use list for WHERE clause parameter
+            params = [college_code]  
 
         return update_record("college", update_data, where_clause, params=params)
 
@@ -84,66 +84,26 @@ class College:
 
     @staticmethod
     def get_student_count(college_code):
-        """Get total number of students in a college using Supabase"""
+        """Get total number of students in a college"""
         try:
-            # Use Supabase RPC function if available
-            result = supabase_manager.get_client().rpc('get_college_stats').eq('college_code', college_code).execute()
-            if result.data and len(result.data) > 0:
-                return result.data[0]['student_count'] or 0
-        except Exception as e:
-            print(f"Error getting student count via RPC: {e}")
-        
-        # Fallback to direct Supabase query
-        try:
-            # Count students through the program relationship
-            result = supabase_manager.get_client().table('student').select('id', count='exact').eq('college_code', college_code).execute()
-            return result.count or 0
+            # Use PostgreSQL function to get college stats
+            query = "SELECT student_count FROM get_college_stats() WHERE college_code = %s"
+            result = execute_raw_sql(query, params=[college_code], fetch=True)
+            if result and len(result) > 0:
+                return result[0]['student_count'] or 0
+            return 0
         except Exception as e:
             print(f"Error getting student count: {e}")
             return 0
 
     @staticmethod
     def get_college_stats():
-        """Get college statistics with student counts using Supabase queries"""
+        """Get college statistics with student counts"""
         try:
-            # Use Supabase RPC function if available
-            result = supabase_manager.get_client().rpc('get_college_stats').execute()
-            if result.data:
-                return result.data
-        except Exception as e:
-            print(f"Error getting college stats via RPC: {e}")
-
-        # Fallback to direct Supabase query - get colleges and count students via programs
-        try:
-            colleges_result = supabase_manager.get_client().table('college').select('code, name').execute()
-            colleges = colleges_result.data or []
-
-            stats = []
-            for college in colleges:
-                try:
-                    # Count total students in all programs of this college
-                    program_codes = College.get_programs(college['code'])
-                    student_count = 0
-
-                    if program_codes:
-                        from ..program.models import Program
-                        for program_data in program_codes:
-                            student_count += Program.get_student_count(program_data['code'])
-
-                    stats.append({
-                        'college_code': college['code'],
-                        'college_name': college['name'],
-                        'student_count': student_count
-                    })
-                except Exception as e:
-                    print(f"Error counting students for college {college['code']}: {e}")
-                    stats.append({
-                        'college_code': college['code'],
-                        'college_name': college['name'],
-                        'student_count': 0
-                    })
-
-            return stats
+            # Use PostgreSQL function to get college stats
+            query = "SELECT * FROM get_college_stats()"
+            result = execute_raw_sql(query, fetch=True)
+            return result or []
         except Exception as e:
             print(f"Error getting college stats: {e}")
             return []

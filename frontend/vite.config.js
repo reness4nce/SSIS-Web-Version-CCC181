@@ -7,12 +7,17 @@ export default defineConfig({
   root: '.',
   server: {
     port: 5173,
-    open: true
+    open: true,
+    // Proxy API requests to backend Flask server during development
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false
+      }
+    }
   },
   css: {
     postcss: './postcss.config.js'
-  },
-  build: {
-    outDir: 'dist'
   }
 })

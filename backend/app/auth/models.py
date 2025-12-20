@@ -1,5 +1,5 @@
 from werkzeug.security import generate_password_hash, check_password_hash
-from ..supabase import supabase_manager, get_one, insert_record, update_record, delete_record, execute_raw_sql
+from ..database import get_one, insert_record, update_record, delete_record, execute_raw_sql
 
 class User:
     """User model for authentication using Supabase"""
@@ -19,13 +19,13 @@ class User:
 
     @staticmethod
     def get_by_username(username):
-        # Use service_role client to bypass RLS for authentication
-        return get_one("users", where_clause="username = %s", params=[username], use_service_role=True)
+        # Get user by username
+        return get_one("users", where_clause="username = %s", params=[username])
 
     @staticmethod
     def get_by_email(email):
-        # Use service_role client to bypass RLS for authentication
-        return get_one("users", where_clause="email = %s", params=[email], use_service_role=True)
+        # Get user by email
+        return get_one("users", where_clause="email = %s", params=[email])
 
     @staticmethod
     def get_by_id(user_id):

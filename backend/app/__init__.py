@@ -6,6 +6,7 @@ from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging
+import subprocess
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -214,6 +215,29 @@ def create_app(config=None):
         except Exception as e:
             print(f"❌ Error resetting database: {e}")
             app.logger.error(f"Database reset failed: {e}", exc_info=True)
+
+    @app.cli.command("build-frontend")
+    def build_frontend_command():
+        """Build the React frontend by running npm in the frontend directory."""
+        frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'frontend')
+        try:
+            app.logger.info("Building frontend (npm ci && npm run build)")
+            # Prefer npm ci for reproducible installs; fallback to npm install if ci fails
+            try:
+                subprocess.check_call(["npm", "ci"], cwd=frontend_dir)
+            except subprocess.CalledProcessError:
+                app.logger.warning("npm ci failed; falling back to npm install")
+                subprocess.check_call(["npm", "install"], cwd=frontend_dir)
+
+            subprocess.check_call(["npm", "run", "build"], cwd=frontend_dir)
+            print("✅ Frontend built to frontend/dist")
+            app.logger.info("Frontend build completed")
+        except FileNotFoundError:
+            print("❌ npm not found. Please install Node.js and npm to build the frontend.")
+            app.logger.error("npm not found when trying to build frontend")
+        except Exception as e:
+            print(f"❌ Frontend build failed: {e}")
+            app.logger.error(f"Frontend build failed: {e}", exc_info=True)
     
     @app.cli.command("fix-rls")
     def fix_rls_command():

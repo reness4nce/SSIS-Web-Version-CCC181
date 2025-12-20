@@ -43,6 +43,8 @@ const StudentList = () => {
   const [originalEditingId, setOriginalEditingId] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [justUploadedPhoto, setJustUploadedPhoto] = useState(false);
+  const [justRemovedPhoto, setJustRemovedPhoto] = useState(false);
+  const [justSubmittedForm, setJustSubmittedForm] = useState(null); // { operation, hasPhoto }
 
   // Debounced search for performance
   const [debouncedSearch] = useDebounce(searchParams.search, DEBOUNCE_DELAY);
@@ -135,7 +137,7 @@ const StudentList = () => {
     }
   };
 
-  const handleFormSuccess = (studentData, operation) => {
+  const handleFormSuccess = (studentData, operation, hasPhoto = false) => {
     if (operation === 'update' && studentData && originalEditingId) {
       setStudents((prev) =>
         prev.map((student) =>
@@ -173,8 +175,28 @@ const StudentList = () => {
       // Mark that we just uploaded a photo - toast will show when modal closes
       setJustUploadedPhoto(true);
       return; // Don't close modal
+    } else if (operation === 'photo_remove_no_close' && studentData) {
+      // Update student data but keep modal open
+      setStudents((prev) =>
+        prev.map((student) =>
+          student.id === studentData.id ? { ...student, ...studentData } : student
+        )
+      );
+
+      if (editingStudent?.id === studentData.id) {
+        setEditingStudent({ ...editingStudent, ...studentData });
+      }
+
+      // Mark that we just removed a photo - toast will show when modal closes
+      setJustRemovedPhoto(true);
+      return; // Don't close modal
     } else {
       fetchStudents();
+    }
+
+    // Show success message after modal closes
+    if (operation === 'create' || operation === 'update') {
+      setJustSubmittedForm({ operation, hasPhoto });
     }
 
     closeModal();
@@ -206,6 +228,22 @@ const StudentList = () => {
       showSuccessToast("Photo uploaded successfully!");
       setJustUploadedPhoto(false);
     }
+
+    if (justRemovedPhoto) {
+      showSuccessToast("Photo removed successfully!");
+      setJustRemovedPhoto(false);
+    }
+
+    if (justSubmittedForm) {
+      const { operation, hasPhoto } = justSubmittedForm;
+      const photoMessage = hasPhoto ? " with photo" : "";
+      const message = operation === 'create'
+        ? `Student created successfully${photoMessage}!`
+        : `Student updated successfully${photoMessage}!`;
+      showSuccessToast(message);
+      setJustSubmittedForm(null);
+    }
+
     setIsModalOpen(false);
     setEditingStudent(null);
     setOriginalEditingId(null);
